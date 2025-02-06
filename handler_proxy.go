@@ -12,11 +12,17 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/andybalholm/brotli"
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
+)
+
+var (
+	globalModelJSON []byte // Models cache, store as JSON bytes
+	modelDataMutex  sync.RWMutex
 )
 
 // parseProvider splits the URL path to determine the provider and remaining path
@@ -188,102 +194,129 @@ func (s *ProxyServer) handleCORS(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func (s *ProxyServer) returnAllModels(w http.ResponseWriter, r *http.Request) {
-	var modelData []map[string]interface{}
+func (s *ProxyServer) getModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
+	targetURL := providerConfig.BaseURL + "/models"
+
+	proxyReq, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request for provider %s: %w", provider, err)
+	}
+
+	proxyReq.Header = proxyHeaders(http.Header{}, providerConfig)
+
+	resp, err := s.client.Do(proxyReq)
+	if err != nil {
+		return nil, fmt.Errorf("proxy request failed for provider %s: %w", provider, err)
+	}
+
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+
+	respBuffer, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body for provider %s: %w", provider, err)
+	}
+
+	encoding := resp.Header.Get("Content-Encoding")
+	if encoding != "" {
+		decompressedReader, err := decompressBody(bytes.NewReader(respBuffer), encoding)
+		if err != nil {
+			return nil, fmt.Errorf("error decompressing response for provider %s: %w", provider, err)
+		}
+		decompressedBody, err := io.ReadAll(decompressedReader)
+		if err != nil {
+			return nil, fmt.Errorf("error reading decompressed response for provider %s: %w", provider, err)
+		}
+		respBuffer = decompressedBody
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(respBuffer, &parsed); err != nil {
+		return nil, fmt.Errorf("could not parse response for provider %s: %w", provider, err)
+	}
+
+	var providerModelData []map[string]interface{}
+	if data, ok := parsed["data"].([]interface{}); ok {
+		for _, item := range data {
+			if obj, ok := item.(map[string]interface{}); ok {
+				if id, exists := obj["id"].(string); exists {
+					obj["id"] = provider + ":" + id
+				}
+				if name, exists := obj["name"].(string); exists {
+					obj["name"] = provider + ":" + name
+				}
+				providerModelData = append(providerModelData, obj)
+			}
+		}
+	}
+	return providerModelData, nil
+}
+
+func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	modelDataMutex.RLock()
+	if globalModelJSON != nil {
+		_, err := w.Write(globalModelJSON)
+		if err != nil {
+			log.Printf("Error writing cached response: %v", err)
+		}
+		modelDataMutex.RUnlock()
+		return
+	}
+	modelDataMutex.RUnlock()
+
 	ctx, cancel := context.WithTimeout(r.Context(), httpRequestTimeout)
 	defer cancel()
 
-	// Go through all providers, get all their models, combine into master list with modified ID
-	// TODO: handler for Gemini model list
+	var combinedModelData []map[string]interface{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
 	for provider, providerConfig := range s.config.Providers {
-		targetURL := providerConfig.BaseURL + "/models"
-
-		proxyReq, err := http.NewRequestWithContext(ctx, r.Method, targetURL, bytes.NewBuffer([]byte("")))
-		if err != nil {
-			http.Error(w, `{"error":"Failed to get multi models"}`, http.StatusInternalServerError)
-			return
-		}
-
-		proxyReq.Header = proxyHeaders(r.Header, providerConfig)
-
-		resp, err := s.client.Do(proxyReq)
-		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"Proxy Error","message":"%s"}`, err), http.StatusInternalServerError)
-			return
-		}
-
-		defer func() {
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-		}()
-
-		// Get response body
-		respBuffer, err := io.ReadAll(resp.Body)
-		if err != nil {
-			http.Error(w, `{"error":"Failed to read response body"}`, http.StatusInternalServerError)
-			return
-		}
-
-		encoding := resp.Header.Get("Content-Encoding")
-		if encoding == "" {
-			// do nothing
-
-		} else {
-			decompressedReader, err := decompressBody(bytes.NewReader(respBuffer), encoding)
+		wg.Add(1)
+		go func(p string, pc ProviderConfig) {
+			defer wg.Done()
+			providerModelData, err := s.getModels(ctx, p, pc)
 			if err != nil {
-				log.Printf("Error decompressing response: %v", err)
-				http.Error(w, `{"error":"Failed to decompress response"}`, http.StatusInternalServerError)
+				log.Printf("Error fetching models from %s: %v", p, err)
 				return
 			}
-			decompressedBody, err := io.ReadAll(decompressedReader)
-			if err != nil {
-				log.Printf("Error reading decompressed response: %v", err)
-				http.Error(w, `{"error":"Failed to read decompressed response"}`, http.StatusInternalServerError)
-				return
-			}
-			respBuffer = decompressedBody
-		}
 
-		// parse the output, and rewrite the model IDs (data[{"id":"model"...}, ...])
-		var parsed map[string]interface{}
-		if err := json.Unmarshal(respBuffer, &parsed); err != nil {
-			http.Error(w, `{"error":"Could not get models"}`, http.StatusInternalServerError)
-			return
-		}
-		if data, ok := parsed["data"].([]interface{}); ok {
-			for _, item := range data {
-				if obj, ok := item.(map[string]interface{}); ok {
-					if id, exists := obj["id"].(string); exists {
-						obj["id"] = provider + ":" + id
-					}
-					if name, exists := obj["name"].(string); exists {
-						obj["name"] = provider + ":" + name
-					}
-					modelData = append(modelData, obj)
-				}
-			}
-		}
+			mu.Lock()
+			combinedModelData = append(combinedModelData, providerModelData...)
+			mu.Unlock()
+		}(provider, providerConfig)
 	}
+	wg.Wait()
 
-	sort.Slice(modelData, func(i, j int) bool {
-		return modelData[i]["id"].(string) < modelData[j]["id"].(string)
+	sort.Slice(combinedModelData, func(i, j int) bool {
+		return combinedModelData[i]["id"].(string) < combinedModelData[j]["id"].(string)
 	})
+
 	allModels := map[string]interface{}{
 		"object": "list",
-		"data":   modelData,
+		"data":   combinedModelData,
 	}
+
+	// Marshal once, store the result
 	respBuffer, err := json.Marshal(allModels)
 	if err != nil {
-		http.Error(w, `{"error":"Could not remarshal models"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"Could not marshal models"}`, http.StatusInternalServerError)
 		return
 	}
-	_, err = w.Write(respBuffer)
+
+	modelDataMutex.Lock()
+	globalModelJSON = respBuffer // Store the JSON bytes
+	modelDataMutex.Unlock()
+
+	_, err = w.Write(respBuffer) // Write the same JSON bytes
 	if err != nil {
 		log.Printf("Error writing response: %v", err)
 		return
 	}
-
 }
 
 // handleProxy processes incoming proxy requests
@@ -321,7 +354,7 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	// Special handler for /v1 router
 	if provider == "v1" {
 		if r.Method == "GET" && remainingPath == "models" {
-			s.returnAllModels(w, r)
+			s.getAllModels(w, r)
 			return
 
 		} else {
