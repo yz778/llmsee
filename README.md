@@ -28,18 +28,18 @@ The configuration file should be set up as follows:
 
 ```json
 {
-  "host": "localhost",
-  "port": 5050,
-  "pageSize": 15,
-  "providers": {
-    "ollama": {
-      "baseUrl": "http://localhost:11434/v1",
-      "apikey": ""
-    },
-    "openai": {
-      "baseUrl": "https://api.openai.com/v1",
-      "apikey": "<OpenAI API Key>"
-    },
+	"host": "localhost",
+	"port": 5050,
+	"pageSize": 15,
+	"providers": {
+		"ollama": {
+			"baseUrl": "http://localhost:11434/v1",
+			"apikey": ""
+		},
+		"openai": {
+			"baseUrl": "https://api.openai.com/v1",
+			"apikey": "<OpenAI API Key>"
+		},
 		"deepseek": {
 			"baseUrl": "https://api.deepseek.com",
 			"apikey": "<Deepseek API Key>"
@@ -56,8 +56,8 @@ The configuration file should be set up as follows:
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"apikey": "<openrouter API key>"
 		},
-    "providerX": ...etc...
-  }
+		"provider...": ...etc...
+	}
 }
 ```
 
