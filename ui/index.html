@@ -400,7 +400,7 @@
                     try {
                         const response = await fetch('/log/detail?id=' + id)
                         const data = await response.json()
-                        history.pushState(null, '', location.href)
+                        history.pushState({ logId: id }, '', `#${id}`)
                         this.selectedLog = data
                         this.$nextTick(() => Prism.highlightAll())
                     } catch (error) {
@@ -446,6 +446,9 @@
                 },
                 closeModal() {
                     this.selectedLog = null
+                    if (history.state && history.state.logId) {
+                        history.back()
+                    }
                 },
                 addMarker() {
                     this.logs.unshift({ id: '', _marker: true })
@@ -498,6 +501,12 @@
                     if (e.key === ' ' && this.selectedLog == null) {
                         e.preventDefault()
                         this.addMarker()
+                    }
+                })
+
+                window.addEventListener('popstate', (event) => {
+                    if (!event.state || !event.state.logId) {
+                        this.closeModal()
                     }
                 })
 
