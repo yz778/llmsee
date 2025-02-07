@@ -42,9 +42,14 @@ type ProviderConfig struct {
 	BaseURL       string            `json:"baseurl"`
 	ApiKey        string            `json:"apikey"`
 	HeaderMapping map[string]string `json:"headermapping"`
+	Enabled       *bool             `json:"enabled"`
 }
 
-func emptyString(value, defaultValue string) string {
+func (p *ProviderConfig) IsEnabled() bool {
+	return p.Enabled == nil || *p.Enabled
+}
+
+func defaultString(value, defaultValue string) string {
 	if value == "" {
 		return defaultValue
 	} else {
@@ -52,7 +57,7 @@ func emptyString(value, defaultValue string) string {
 	}
 }
 
-func emptyStringInt(value string, defaultValue int) int {
+func defaultInt(value string, defaultValue int) int {
 	if value == "" {
 		return defaultValue
 	} else {
@@ -62,13 +67,13 @@ func emptyStringInt(value string, defaultValue int) int {
 }
 
 var defaultConfig = Config{
-	Host:         emptyString(os.Getenv("LLMSEE_HOST"), "localhost"),
-	Port:         emptyStringInt(os.Getenv("LLMSEE_PORT"), 5050),
+	Host:         defaultString(os.Getenv("LLMSEE_HOST"), "localhost"),
+	Port:         defaultInt(os.Getenv("LLMSEE_PORT"), 5050),
 	DatabaseFile: "llmsee.db",
 	PageSize:     20,
 	Providers: map[string]ProviderConfig{
 		"ollama": {
-			BaseURL:       "http://" + emptyString(os.Getenv("LLMSEE_LOCALHOST"), "localhost") + ":11434/v1",
+			BaseURL:       "http://" + defaultString(os.Getenv("LLMSEE_LOCALHOST"), "localhost") + ":11434/v1",
 			ApiKey:        "",
 			HeaderMapping: map[string]string{},
 		},
@@ -112,6 +117,13 @@ func getConfig() (config *Config, err error) {
 	for providerName, defaultProviderConfig := range defaultConfig.Providers {
 		if _, exists := config.Providers[providerName]; !exists {
 			config.Providers[providerName] = defaultProviderConfig
+		}
+	}
+
+	// remove providers that arent' enabled
+	for providerName, providerConfig := range config.Providers {
+		if !providerConfig.IsEnabled() {
+			delete(config.Providers, providerName)
 		}
 	}
 
