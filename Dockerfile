@@ -21,7 +21,7 @@ EXPOSE 5050
 
 USER 1000:1000
 
-ENV llmsee_CONFIGFILE=/app/llmsee.json
-ENV llmsee_DATABASEFILE=/app/llmsee.db
+ENV LLMSEE_CONFIGFILE=/app/llmsee.json
+ENV LLMSEE_DATABASEFILE=/app/llmsee.db
 
 CMD ["/app/llmsee"]
