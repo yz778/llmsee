@@ -351,7 +351,7 @@
                                 <div>Response Body</div>
                                 <div v-if="selectedLog.response_body">
                                     <button @click="copyToClipboard" class="copy-btn" v-html="svgCopy"></button>
-                                    <pre><code class="language-json">{{ parseStream(selectedLog.response_body) }}</code></pre>
+                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.response_body) }}</code></pre>
                                 </div>
                             </div>
                         </div>
@@ -474,64 +474,6 @@
                     } catch (e) {
                         return str
                     }
-                },
-                parseStream(streamText) {
-                    if (!streamText.includes('"choices"') || !streamText.includes('"delta"')) {
-                        return this.prettyJSON(streamText)
-                    }
-
-                    // Split the input into individual JSON chunks
-                    const chunks = streamText.trim().split(/}\s*{/).map((chunk, index) => {
-                        // Add back the curly braces that were split
-                        return (index === 0 ? '' : '{') + chunk + (index === streamText.trim().split(/}\s*{/).length - 1 ? '' : '}')
-                    })
-
-                    let assembledContent = ''
-                    let usageStats = null
-                    const metadata = {
-                        id: null,
-                        model: null,
-                        system_fingerprint: null,
-                        created: null
-                    }
-
-                    chunks.forEach(chunk => {
-                        try {
-                            const parsed = JSON.parse(chunk)
-
-                            // Store metadata from first chunk
-                            if (!metadata.id) {
-                                metadata.id = parsed.id
-                                metadata.model = parsed.model
-                                metadata.system_fingerprint = parsed.system_fingerprint
-                                metadata.created = parsed.created
-                            }
-
-                            // Handle content chunks
-                            if (parsed.choices && parsed.choices.length > 0 &&
-                                parsed.choices[0].delta &&
-                                parsed.choices[0].delta.content !== undefined) {
-                                assembledContent += parsed.choices[0].delta.content
-                            }
-
-                            // Capture usage statistics from final chunk
-                            if (parsed.usage) {
-                                usageStats = parsed.usage
-                            }
-
-                        } catch (error) {
-                            console.error('Error parsing chunk:', error)
-                        }
-                    })
-
-                    let obj = {
-                        metadata,
-                        content: assembledContent,
-                        usage: usageStats,
-                        totalChunks: chunks.length
-                    }
-
-                    return JSON.stringify(obj, null, 2)
                 },
                 copyToClipboard(event) {
                     const pre = event.target.closest('div').querySelector('pre code')
