@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -43,14 +44,31 @@ type ProviderConfig struct {
 	HeaderMapping map[string]string `json:"headermapping"`
 }
 
+func emptyString(value, defaultValue string) string {
+	if value == "" {
+		return defaultValue
+	} else {
+		return value
+	}
+}
+
+func emptyStringInt(value string, defaultValue int) int {
+	if value == "" {
+		return defaultValue
+	} else {
+		value, _ := strconv.Atoi(value)
+		return value
+	}
+}
+
 var defaultConfig = Config{
-	Host:         "localhost",
-	Port:         5050,
+	Host:         emptyString(os.Getenv("LLMSEE_HOST"), "localhost"),
+	Port:         emptyStringInt(os.Getenv("LLMSEE_PORT"), 5050),
 	DatabaseFile: "llmsee.db",
 	PageSize:     20,
 	Providers: map[string]ProviderConfig{
 		"ollama": {
-			BaseURL:       "http://localhost:11434/v1",
+			BaseURL:       "http://" + emptyString(os.Getenv("LLMSEE_LOCALHOST"), "localhost") + ":11434/v1",
 			ApiKey:        "",
 			HeaderMapping: map[string]string{},
 		},
@@ -61,14 +79,13 @@ func getConfig() (config *Config, err error) {
 	config = &Config{}
 	configFile := findConfigFile()
 
-	if configFile == "" {
-		log.Printf("Using default configuration\n")
-	} else {
-		log.Printf("%-10s %s\n", "Config:", configFile)
+	if configFile != "" {
 		fileConfig, _ := os.ReadFile(configFile)
 		if err := json.Unmarshal(fileConfig, &config); err != nil {
-			log.Fatalf("Invalid configuration in %s\n", configFile)
+			log.Printf("Config file %s not found", configFile)
 			config = &Config{}
+		} else {
+			log.Printf("Config file %s", configFile)
 		}
 	}
 
@@ -107,16 +124,12 @@ func findConfigFile() string {
 	flag.StringVar(&configFile, "c", "", "Path to JSON configuration file")
 	flag.Parse()
 	if configFile != "" {
-		if fileExists(configFile) {
-			return configFile
-		} else {
-			log.Fatalf("Configuration file %s not found", configFile)
-		}
+		return configFile
 	}
 
 	// check env variable
 	configFile = os.Getenv("LLMSEE_CONFIGFILE")
-	if fileExists(configFile) {
+	if configFile != "" {
 		return configFile
 	}
 
@@ -188,7 +201,7 @@ func getDatabaseFile() string {
 
 	// check env variable
 	dbFile = os.Getenv("LLMSEE_DATABASEFILE")
-	if fileExists(dbFile) {
+	if dbFile != "" {
 		return dbFile
 	}
 

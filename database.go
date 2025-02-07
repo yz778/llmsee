@@ -35,7 +35,7 @@ type LogResponse struct {
 }
 
 func getDb(dbPath string) (db *sql.DB, err error) {
-	log.Printf("%-10s %s\n", "Database:", dbPath)
+	log.Printf("Database file %s", dbPath)
 
 	db, err = sql.Open("sqlite", dbPath)
 	if err != nil {
