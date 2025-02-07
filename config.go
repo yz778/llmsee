@@ -82,7 +82,7 @@ func getConfig() (config *Config, err error) {
 	if configFile != "" {
 		fileConfig, _ := os.ReadFile(configFile)
 		if err := json.Unmarshal(fileConfig, &config); err != nil {
-			log.Printf("Config file %s not found", configFile)
+			log.Printf("Config file %s is not valid, skipping", configFile)
 			config = &Config{}
 		} else {
 			log.Printf("Config file %s", configFile)
