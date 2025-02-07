@@ -115,7 +115,7 @@ func findConfigFile() string {
 	}
 
 	// check env variable
-	configFile = os.Getenv("llmsee_CONFIGFILE")
+	configFile = os.Getenv("LLMSEE_CONFIGFILE")
 	if fileExists(configFile) {
 		return configFile
 	}
@@ -187,7 +187,7 @@ func getDatabaseFile() string {
 	var dbFile string
 
 	// check env variable
-	dbFile = os.Getenv("llmsee_DATABASEFILE")
+	dbFile = os.Getenv("LLMSEE_DATABASEFILE")
 	if fileExists(dbFile) {
 		return dbFile
 	}
