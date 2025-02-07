@@ -58,7 +58,7 @@ func NewProxyServer() (*ProxyServer, error) {
 
 // main function starts the server
 func main() {
-	log.Printf("LLMSee %s Starting", VERSION)
+	log.Printf("LLMSee %s", VERSION)
 	server, err := NewProxyServer()
 	if err != nil {
 		log.Fatalf("Failed to initialize server: %v", err)
@@ -66,7 +66,7 @@ func main() {
 	defer server.db.Close()
 
 	if server.devMode {
-		log.Printf("%-10s %s", "Devmode:", "true")
+		log.Print("Developer mode enabled")
 	}
 
 	mux := http.NewServeMux()
@@ -99,13 +99,7 @@ func main() {
 	time.Sleep(100 * time.Millisecond)
 
 	// Print server information
-	log.Printf("%-10s http://%s", "URLs:", addr)
-	log.Printf("%-10s http://%s/ui", "", addr)
-	log.Printf("%-10s http://%s/v1", "API Base:", addr)
-	log.Printf("%-10s", "Providers:")
-	for provider := range server.config.Providers {
-		log.Printf("%-10s http://%s/%s", "", addr, provider)
-	}
+	log.Printf("Server Ready: http://%s", addr)
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)

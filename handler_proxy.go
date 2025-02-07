@@ -319,24 +319,50 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *ProxyServer) handleIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, "<html>")
+	fmt.Fprint(w, "<header><title>LLMSee</title></header>")
+	fmt.Fprint(w, "<style>*{font-size:1rem}body{font-family:monospace;background-color:black;color:#c0c0c0;padding:10px}a,a:visited{text-decoration:none;color:white}a:hover{text-decoration:underline}</style>")
+	fmt.Fprint(w, "<body>")
+	fmt.Fprint(w, "<table>")
+	fmt.Fprint(w, "<tr>")
+	fmt.Fprint(w, "<td>LLMSee:</td>")
+	fmt.Fprintf(w, "<td>%s</td>", VERSION)
+	fmt.Fprint(w, "</tr>")
+	fmt.Fprint(w, "<tr>")
+	fmt.Fprint(w, "<td>WebUI:</td>")
+	fmt.Fprintf(w, "<td><a href=\"http://%s/ui\">http://%s/ui</a></td>", r.Host, r.Host)
+	fmt.Fprint(w, "</tr>")
+	fmt.Fprint(w, "<tr>")
+	fmt.Fprint(w, "<td>API Base URL:</td>")
+	fmt.Fprintf(w, "<td><a href=\"http://%s/v1\">http://%s/v1</a></td>", r.Host, r.Host)
+	fmt.Fprint(w, "</tr>")
+	fmt.Fprint(w, "<tr>")
+	fmt.Fprint(w, "<td>Model List:</td>")
+	fmt.Fprintf(w, "<td><a href=\"http://%s/v1/models\">http://%s/v1/models</a></td>", r.Host, r.Host)
+	fmt.Fprint(w, "</tr>")
+	fmt.Fprint(w, "<tr valign=\"top\">")
+	fmt.Fprint(w, "<td>Provider URLs:</td>")
+	fmt.Fprint(w, "<td>")
+	for provider := range s.config.Providers {
+		fmt.Fprintf(w, "<div style=\"margin-bottom:5px\"><a href=\"http://%s/%s\">http://%s/%s</a></div>", r.Host, provider, r.Host, provider)
+	}
+	fmt.Fprint(w, "</td>")
+	fmt.Fprint(w, "</tr>")
+	fmt.Fprint(w, "<tr>")
+	fmt.Fprint(w, "<td>Source Code:</td>")
+	fmt.Fprint(w, "<td><a href=\"https://github.com/yz778/llmsee\">GitHub</a></td>")
+	fmt.Fprint(w, "</tr>")
+	fmt.Fprint(w, "<tr>")
+	fmt.Fprint(w, "</body>")
+	fmt.Fprint(w, "</html>")
+}
+
 // handleProxy processes incoming proxy requests
 func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, "<html><header><title>LLMSee</title><style>body{font-family:monospace;background-color:black;color:white;padding:10px}a,a:visited{color:yellow}</style></header><body>")
-		fmt.Fprintf(w, "<div>LLMSee %s Ready</div>", VERSION)
-		fmt.Fprint(w, "<div style=\"margin-top:15px\">WebUI:</div>")
-		fmt.Fprintf(w, "<div><a href=\"http://%s/ui\">http://%s/ui</a></div>", r.Host, r.Host)
-		fmt.Fprint(w, "<div style=\"margin-top:15px\">API Base URL:</div>")
-		fmt.Fprintf(w, "<div><a href=\"http://%s/v1\">http://%s/v1</a>", r.Host, r.Host)
-		fmt.Fprint(w, "<div style=\"margin-top:15px\">Individual Provider URLs:</div>")
-		for provider := range s.config.Providers {
-			fmt.Fprintf(w, "<div><a href=\"http://%s/%s\">http://%s/%s</a></div>", r.Host, provider, r.Host, provider)
-		}
-		fmt.Fprint(w, "<div style=\"margin-top:15px\">Source Code:</div>")
-		fmt.Fprint(w, "<div><a href=\"https://github.com/yz778/llmsee\">GitHub</a></div>")
-		fmt.Fprint(w, "</body></html>")
-
+		s.handleIndex(w, r)
 		return
 	}
 
