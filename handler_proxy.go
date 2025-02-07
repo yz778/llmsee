@@ -20,6 +20,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+
 var (
 	globalModelJSON []byte // Models cache, store as JSON bytes
 	modelDataMutex  sync.RWMutex
@@ -194,21 +196,18 @@ func (s *ProxyServer) handleCORS(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func (s *ProxyServer) getModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
-	targetURL := providerConfig.BaseURL + "/models"
-
-	proxyReq, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+func (s *ProxyServer) fetchProviderJSON(ctx context.Context, headers http.Header, url string) (map[string]interface{}, error) {
+	proxyReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request for provider %s: %w", provider, err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	proxyReq.Header = proxyHeaders(http.Header{}, providerConfig)
+	proxyReq.Header = headers
 
 	resp, err := s.client.Do(proxyReq)
 	if err != nil {
-		return nil, fmt.Errorf("proxy request failed for provider %s: %w", provider, err)
+		return nil, fmt.Errorf("failed to make request failed: %w", err)
 	}
-
 	defer func() {
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
@@ -216,25 +215,66 @@ func (s *ProxyServer) getModels(ctx context.Context, provider string, providerCo
 
 	respBuffer, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body for provider %s: %w", provider, err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	encoding := resp.Header.Get("Content-Encoding")
 	if encoding != "" {
 		decompressedReader, err := decompressBody(bytes.NewReader(respBuffer), encoding)
 		if err != nil {
-			return nil, fmt.Errorf("error decompressing response for provider %s: %w", provider, err)
+			return nil, fmt.Errorf("error decompressing response: %w", err)
 		}
 		decompressedBody, err := io.ReadAll(decompressedReader)
 		if err != nil {
-			return nil, fmt.Errorf("error reading decompressed response for provider %s: %w", provider, err)
+			return nil, fmt.Errorf("error reading decompressed: %w", err)
 		}
 		respBuffer = decompressedBody
 	}
 
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(respBuffer, &parsed); err != nil {
-		return nil, fmt.Errorf("could not parse response for provider %s: %w", provider, err)
+		return nil, fmt.Errorf("could not parse response: %w", err)
+	}
+
+	return parsed, nil
+}
+
+func (s *ProxyServer) getGeminiModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
+	url := geminiBaseURL + "/models?key=" + s.config.Providers[provider].ApiKey
+	headers := proxyHeaders(http.Header{}, providerConfig)
+	headers.Del("Authorization")
+	parsed, err := s.fetchProviderJSON(ctx, headers, url)
+	if err != nil {
+		return nil, err
+	}
+
+	var providerModelData []map[string]interface{}
+	if data, ok := parsed["models"].([]interface{}); ok {
+		for _, item := range data {
+			if obj, ok := item.(map[string]interface{}); ok {
+				if name, exists := obj["name"].(string); exists {
+					name = strings.Replace(name, "models/", "", 1)
+					obj["name"] = provider + ":" + name
+					obj["id"] = obj["name"]
+				}
+				providerModelData = append(providerModelData, obj)
+			}
+		}
+	}
+	return providerModelData, nil
+}
+
+func (s *ProxyServer) getModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
+	if strings.HasPrefix(providerConfig.BaseURL, geminiBaseURL) {
+		return s.getGeminiModels(ctx, provider, providerConfig)
+	}
+
+	url := providerConfig.BaseURL + "/models"
+	headers := proxyHeaders(http.Header{}, providerConfig)
+	parsed, err := s.fetchProviderJSON(ctx, headers, url)
+
+	if err != nil {
+		return nil, err
 	}
 
 	var providerModelData []map[string]interface{}
