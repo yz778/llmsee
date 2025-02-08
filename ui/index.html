@@ -413,9 +413,9 @@
                 initSSE() {
                     this.sse = new EventSource("/ui/sse")
 
-                    this.sse.onmessage = (event) => {
+                    this.sse.onmessage = (e) => {
                         this.sseRetries = 0
-                        const data = JSON.parse(event.data)
+                        const data = JSON.parse(e.data)
                         switch (data?.eventType) {
                             case "init":
                                 this.clientID = data.clientID
@@ -479,37 +479,36 @@
                         return str
                     }
                 },
-                copyToClipboard(event) {
-                    const pre = event.target.closest('div').querySelector('pre code')
+                copyToClipboard(e) {
+                    const pre = e.target.closest('div').querySelector('pre code')
                     const textToCopy = pre.textContent || pre.innerText
 
                     navigator.clipboard.writeText(textToCopy)
                         .then(() => console.log('Copied to clipboard'))
                         .catch(err => console.error('Error copying text: ', err))
-                }
-            },
-            mounted() {
-                // Close modal on ESC key press
-                document.addEventListener('keydown', (e) => {
+                },
+                escKeyListener(e) {
                     if (e.key === 'Escape' && this.selectedLog !== null) {
                         e.preventDefault()
                         this.closeModal()
                     }
-                })
-
-                // Add marker on SPACE key press
-                document.addEventListener('keydown', (e) => {
+                },
+                spaceKeyListener(e) {
                     if (e.key === ' ' && this.selectedLog == null) {
                         e.preventDefault()
                         this.addMarker()
                     }
-                })
-
-                window.addEventListener('popstate', (event) => {
-                    if (!event.state || !event.state.logId) {
+                },
+                popStateListener(e) {
+                    if (!e.state || !e.state.logId) {
                         this.closeModal()
                     }
-                })
+                },
+            },
+            mounted() {
+                document.addEventListener('keydown', this.escKeyListener)
+                document.addEventListener('keydown', this.spaceKeyListener)
+                window.addEventListener('popstate', this.popStateListener)
 
                 this.initSSE()
                 this.fetchLogs(this.currentPage)
