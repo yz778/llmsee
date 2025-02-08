@@ -430,6 +430,10 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if v1Request {
 		if model, ok := bodyJSON["model"].(string); ok {
 			parts := strings.SplitN(model, ":", 2) // <provider>:<model>
+			if len(parts) != 2 {
+			    http.Error(w, `{"error":"Invalid model format"}`, http.StatusBadRequest)
+			    return
+			}
 			provider = parts[0]
 			model = parts[1]
 			bodyJSON["model"] = model
