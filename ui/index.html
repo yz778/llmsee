@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLMSee</title>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/2.8.2/alpine.js" integrity="sha512-No22QdEJ4zlXvdQDpm6oeXcjwajpNxvnstx6NEU/5qZFysa5gsgj/bSfAFpSc9Za5LjbgQLRXyCeY53aWmk8ZA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.13/vue.global.prod.min.js" integrity="sha512-66fV4MXSQdGN0KQxZ0Bw627HalhTQYQbOoF24EtMXN2FaAoKMgAZ7nDi77d9xWwrRjEEUfE+7rxjTt+cA2IuJA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" integrity="sha512-7Z9J3l1+EYfeaPKcGXu3MS/7T+w19WtKQY/n+xzmw4hZhJ9tyYmcUS+4QqAlzhicE5LAfMQSF3iFTK9bQdTxXg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js" integrity="sha512-QXFMVAusM85vUYDaNgcYeU3rzSlc+bTV4JvkfJhjxSHlQEo+ig53BtnGkvFTiNJh8D+wv6uWAQ2vJaVmxe8d3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" integrity="sha512-tN7Ec6zAFaVSG3TpNAKtk4DOHNpSwKHxxrsiw4GHKESGPs5njn/0sMCUMl2svV4wo4BK/rCP7juYz+zx+l6oeQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -97,7 +97,6 @@
             gap: 1px;
         }
 
-        /* For small screens, the sections stack vertically */
         @media (max-width: 768px) {
             .modal-content .log-content {
                 grid-template-columns: 1fr;
@@ -133,16 +132,6 @@
             background-color: #dc3545;
         }
 
-        @keyframes spin {
-            0% {
-                transform: translate(-50%, -50%) rotate(0deg);
-            }
-
-            100% {
-                transform: translate(-50%, -50%) rotate(360deg);
-            }
-        }
-
         #table-container {
             max-height: calc(100vh - 200px);
             overflow-y: auto;
@@ -157,7 +146,6 @@
             overflow: hidden;
         }
 
-        /* Ensure the header stays on top */
         #table-container thead th {
             position: sticky;
             top: 0;
@@ -225,28 +213,27 @@
             padding: 0px;
         }
 
-        .pagination {
+        #controls {
             display: flex;
-            justify-content: center;
-            align-items: center;
+            justify-content: left;
+            align-items: left;
             gap: 5px;
             margin-top: 5px;
-
         }
 
-        .pagination input {
+        #controls input {
             margin-bottom: 1rem;
             width: 80px;
             text-align: center;
         }
 
-        .pagination button {
+        #controls button {
             padding-left: 15px;
             padding-right: 15px;
         }
 
-        .pagination button:disabled,
-        .pagination button:disabled:hover {
+        #controls button:disabled,
+        #controls button:disabled:hover {
             cursor: default;
             background-color: #c0c0c0;
             border-color: #c0c0c0;
@@ -265,10 +252,18 @@
 </head>
 
 <body>
-    <div x-data="logData()" x-init="init()" class="container">
-        <!-- Logs Table -->
-        <template x-if="!loading">
-            <section>
+    <div id="app">
+        <div class="container">
+            <section v-if="!loading">
+                <div id="controls">
+                    <button @click="fetchLogs(1)" :disabled="currentPage === 1" class="button button-primary">|&lt;</button>
+                    <button @click="fetchLogs(Math.max(currentPage - 1, 1))" :disabled="currentPage === 1" class="button button-primary">&lt;</button>
+                    <input type="number" @change="e => fetchLogs(parseInt(e.target.value))" :value="currentPage">
+                    <button @click="fetchLogs(Math.min(currentPage + 1, totalPages))" :disabled="currentPage === totalPages" class="button button-primary">&gt;</button>
+                    <button @click="fetchLogs(-1)" :disabled="currentPage === totalPages" class="button button-primary">&gt;|</button>
+                    <button @click="addMarker()" class="button button-primary">Marker</button>
+                </div>
+
                 <div id="table-container">
                     <table class="u-full-width">
                         <thead>
@@ -282,257 +277,140 @@
                                 <th class="right">Sent</th>
                                 <th class="right">Recv</th>
                                 <th class="right">Duration</th>
-                                <th>Method</td>
+                                <th>Method</th>
                             </tr>
                         </thead>
-                        <template x-for="(log, index) in logs" :key="log.id">
-                            <tbody>
-                                <template x-if="log._marker">
-                                    <tr class="marker">
-                                        <td colspan="10"></td>
-                                    </tr>
-                                </template>
-                                <template x-if="!log._marker">
-                                    <tr @click="fetchLogDetail(log.id)" :class="log._flash ? 'rec flash' : 'rec'">
-                                        <td x-text="log.id"></td>
-                                        <td x-text="formatTimestamp(log.timestamp)" :title="log.timestamp"></td>
-                                        <td x-text="log.useragent" class="useragent-cell" :title="log.useragent"></td>
-                                        <td x-text="log.provider"></td>
-                                        <td x-text="log.model"></td>
-                                        <td class="center"><span x-text="log.response_status" class="status" :class="'status-'+String(log.response_status)[0]+'xx'"></span></td>
-                                        <td class="right" x-text="log.request_body_size ? (log.request_body_size/1024).toFixed(2)+' KB' : '-'"></td>
-                                        <td class="right" x-text="log.response_body_size ? (log.response_body_size/1024).toFixed(2)+ ' KB' : '-'"></td>
-                                        <td class="right" x-text="log.duration_ms >= 0 ? log.duration_ms+ ' ms' : '...'"></td>
-                                        <td x-text="log.method"></td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </template>
+                        <tbody>
+                            <template v-for="(log, index) in logs" :key="log.id">
+                                <tr v-if="log._marker" class="marker">
+                                    <td colspan="10"></td>
+                                </tr>
+                                <tr v-else @click="fetchLogDetail(log.id)" :class="['rec', { flash: log._flash }]">
+                                    <td>{{ log.id }}</td>
+                                    <td :title="log.timestamp">{{ formatTimestamp(log.timestamp) }}</td>
+                                    <td class="useragent-cell" :title="log.useragent">{{ log.useragent }}</td>
+                                    <td>{{ log.provider }}</td>
+                                    <td>{{ log.model }}</td>
+                                    <td class="center">
+                                        <span class="status" :class="'status-' + String(log.response_status)[0] + 'xx'">
+                                            {{ log.response_status }}
+                                        </span>
+                                    </td>
+                                    <td class="right">{{ log.request_body_size ? (log.request_body_size/1024).toFixed(2) + ' KB' : '-' }}</td>
+                                    <td class="right">{{ log.response_body_size ? (log.response_body_size/1024).toFixed(2) + ' KB' : '-' }}</td>
+                                    <td class="right">{{ log.duration_ms >= 0 ? log.duration_ms + ' ms' : '...' }}</td>
+                                    <td>{{ log.method }}</td>
+                                </tr>
+                            </template>
+                        </tbody>
                     </table>
                 </div>
-
-                <!-- Pagination -->
-                <div class="pagination">
-                    <button @click="fetchLogs(1)" :disabled="currentPage === 1" class="button button-primary">|&lt;</button>
-                    <button @click="fetchLogs(Math.max(currentPage - 1, 1))" :disabled="currentPage === 1" class="button button-primary">&lt;</button>
-                    <input type="number" @change="fetchLogs(parseInt($event.target.value))" :value="currentPage">
-                    <button @click="fetchLogs(Math.min(currentPage + 1, totalPages))" :disabled="currentPage === totalPages" class="button button-primary">&gt;</button>
-                    <button @click="fetchLogs(-1)" :disabled="currentPage === totalPages" class="button button-primary">&gt;|</button>
-                </div>
             </section>
-        </template>
 
-        <!-- Modal Structure -->
-        <div x-show="selectedLog !== null" x-transition class="modal" @click.self="closeModal()" @popstate.window="closeModal()">
-            <div class="modal-content">
-                <template x-if="loadingDetail">
-                    <div class="loading-container">
+            <!-- Modal -->
+            <div v-if="selectedLog" class="modal" @click.self="closeModal">
+                <div class="modal-content">
+                    <div v-if="loadingDetail" class="loading-container">
                         <div class="loading-spinner"></div>
                     </div>
-                </template>
-                <template x-if="!loadingDetail">
-                    <div class="log-container">
-                        <template x-if="selectedLog">
-                            <div>
-                                <span x-text="selectedLog?.response_status" class="status" :class="'status-'+String(selectedLog?.response_status)[0]+'xx'"></span>
-                                <span x-text="selectedLog.target_url"></span>
-                                <p />
-                            </div>
-                        </template>
+                    <div v-else class="log-container">
+                        <div v-if="selectedLog">
+                            <span :class="['status', 'status-' + String(selectedLog.response_status)[0] + 'xx']">
+                                {{ selectedLog.response_status }}
+                            </span>
+                            <span>{{ selectedLog.target_url }}</span>
+                            <p></p>
+                        </div>
 
                         <div class="log-content">
                             <div class="log-section">
                                 <div>Request Headers</div>
-                                <template x-if="selectedLog?.request_headers">
-                                    <div>
-                                        <button @click="copyToClipboard($event)" class="copy-btn" x-html="svgCopy()"></button>
-                                        <pre><code class="language-json" x-text="prettyJSON(selectedLog.request_headers)"></code></pre>
-                                    </div>
-                                </template>
+                                <div v-if="selectedLog.request_headers">
+                                    <button @click="copyToClipboard" class="copy-btn" v-html="svgCopy"></button>
+                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.request_headers) }}</code></pre>
+                                </div>
                             </div>
 
                             <div class="log-section">
                                 <div>Request Body</div>
-                                <template x-if="selectedLog?.request_body">
-                                    <div>
-                                        <button @click="copyToClipboard($event)" class="copy-btn" x-html="svgCopy()"></button>
-                                        <pre><code class="language-json" x-text="prettyJSON(selectedLog.request_body)"></code></pre>
-                                    </div>
-                                </template>
+                                <div v-if="selectedLog.request_body">
+                                    <button @click="copyToClipboard" class="copy-btn" v-html="svgCopy"></button>
+                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.request_body) }}</code></pre>
+                                </div>
                             </div>
 
                             <div class="log-section">
                                 <div>Response Headers</div>
-                                <template x-if="selectedLog?.response_headers">
-                                    <div>
-                                        <button @click="copyToClipboard($event)" class="copy-btn" x-html="svgCopy()"></button>
-                                        <pre><code class="language-json" x-text="prettyJSON(selectedLog.response_headers)"></code></pre>
-                                    </div>
-                                </template>
+                                <div v-if="selectedLog.response_headers">
+                                    <button @click="copyToClipboard" class="copy-btn" v-html="svgCopy"></button>
+                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.response_headers) }}</code></pre>
+                                </div>
                             </div>
 
                             <div class="log-section">
                                 <div>Response Body</div>
-                                <template x-if="selectedLog?.response_body">
-                                    <div>
-                                        <button @click="copyToClipboard($event)" class="copy-btn" x-html="svgCopy()"></button>
-                                        <pre><code class="language-json" x-text="parseStream(selectedLog.response_body)"></code></pre>
-                                    </div>
-                                </template>
+                                <div v-if="selectedLog.response_body">
+                                    <button @click="copyToClipboard" class="copy-btn" v-html="svgCopy"></button>
+                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.response_body) }}</code></pre>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </template>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        function svgCopy() {
-            return "<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4' fill='none' viewBox='0 0 24 24' stroke='currentColor'>"
-                + "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z' />"
-                + "</svg>"
-        }
+        const { createApp } = Vue
 
-        function copyToClipboard(event) {
-            const pre = event.target.closest('div').querySelector('pre code')
-            const textToCopy = pre.textContent || pre.innerText
-
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                console.log('Copied to clipboard')
-            }).catch(err => {
-                console.error('Error copying text: ', err)
-            })
-        }
-
-        function formatTimestamp(timestamp) {
-            const date = new Date(timestamp)
-            const now = new Date()
-            const diffMs = now - date
-            const diffMins = Math.floor(diffMs / 60000)
-
-            // Check if same day
-            if (date.toDateString() === now.toDateString()) {
-                if (diffMins < 60) {
-                    return `${diffMins}m ago`
+        createApp({
+            data() {
+                return {
+                    logs: [],
+                    currentPage: 1,
+                    totalPages: 1,
+                    loading: true,
+                    loadingDetail: false,
+                    sseRetries: 0,
+                    selectedLog: null,
+                    clientID: "",
+                    svgCopy: "<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4' fill='none' viewBox='0 0 24 24' stroke='currentColor'>"
+                        + "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z' />"
+                        + "</svg>"
                 }
-                const diffHours = Math.floor(diffMins / 60)
-                return `${diffHours}h ago`
-            }
-
-            return timestamp
-        }
-
-        function prettyJSON(str) {
-            try {
-                const obj = JSON.parse(str)
-                return JSON.stringify(obj, null, 2)
-            } catch (e) {
-                return str
-            }
-        }
-
-        function parseStream(streamText) {
-            if (!streamText.includes('"choices"') || !streamText.includes('"delta"')) {
-                return prettyJSON(streamText);
-            }
-
-            // Split the input into individual JSON chunks
-            const chunks = streamText.trim().split(/}\s*{/).map((chunk, index) => {
-                // Add back the curly braces that were split
-                return (index === 0 ? '' : '{') + chunk + (index === streamText.trim().split(/}\s*{/).length - 1 ? '' : '}')
-            })
-
-            let assembledContent = ''
-            let usageStats = null
-            const metadata = {
-                id: null,
-                model: null,
-                system_fingerprint: null,
-                created: null
-            }
-
-            chunks.forEach(chunk => {
-                try {
-                    const parsed = JSON.parse(chunk)
-
-                    // Store metadata from first chunk
-                    if (!metadata.id) {
-                        metadata.id = parsed.id
-                        metadata.model = parsed.model
-                        metadata.system_fingerprint = parsed.system_fingerprint
-                        metadata.created = parsed.created
-                    }
-
-                    // Handle content chunks
-                    if (parsed.choices && parsed.choices.length > 0 &&
-                        parsed.choices[0].delta &&
-                        parsed.choices[0].delta.content !== undefined) {
-                        assembledContent += parsed.choices[0].delta.content
-                    }
-
-                    // Capture usage statistics from final chunk
-                    if (parsed.usage) {
-                        usageStats = parsed.usage
-                    }
-
-                } catch (error) {
-                    console.error('Error parsing chunk:', error)
-                }
-            })
-
-            let obj = {
-                metadata,
-                content: assembledContent,
-                usage: usageStats,
-                totalChunks: chunks.length
-            }
-
-            return JSON.stringify(obj, null, 2)
-        }
-
-        function logData() {
-            return {
-                logs: [],
-                currentPage: 1,
-                totalPages: 1,
-                loading: true,
-                loadingDetail: false,
-                sseRetries: 0,
-                selectedLog: null,
-                clientID: "",
-                fetchLogs(page) {
+            },
+            methods: {
+                async fetchLogs(page) {
                     this.loading = true
-                    fetch('/log?page=' + page)
-                        .then(response => response.json())
-                        .then(data => {
-                            this.logs = data.logs || []
-                            this.currentPage = data.currentPage
-                            this.totalPages = data.totalPages || 1
-                            this.loading = false
-                        })
-                        .catch(error => {
-                            console.error('Error fetching logs:', error)
-                            this.loading = false
-                        })
+                    try {
+                        const response = await fetch('/log?page=' + page)
+                        const data = await response.json()
+                        this.logs = data.logs || []
+                        this.currentPage = data.currentPage
+                        this.totalPages = data.totalPages || 1
+                    } catch (error) {
+                        console.error('Error fetching logs:', error)
+                    } finally {
+                        this.loading = false
+                    }
                 },
-                fetchLogDetail(id) {
+                async fetchLogDetail(id) {
                     this.loadingDetail = true
-                    fetch('/log/detail?id=' + id)
-                        .then(response => response.json())
-                        .then(data => {
-                            history.pushState(null, '', location.href)
-                            this.selectedLog = data
-                            this.loadingDetail = false
-                            this.$nextTick(() => Prism.highlightAll())
-                        })
-                        .catch(error => {
-                            console.error('Error fetching log detail:', error)
-                            this.loadingDetail = false
-                        })
+                    try {
+                        const response = await fetch('/log/detail?id=' + id)
+                        const data = await response.json()
+                        history.pushState({ logId: id }, '', `#${id}`)
+                        this.selectedLog = data
+                        this.$nextTick(() => Prism.highlightAll())
+                    } catch (error) {
+                        console.error('Error fetching log detail:', error)
+                    } finally {
+                        this.loadingDetail = false
+                    }
                 },
                 initSSE() {
-                    const eventSource = new EventSource("/ui/sse");
+                    const eventSource = new EventSource("/ui/sse")
 
                     eventSource.onmessage = (event) => {
                         this.sseRetries = 0
@@ -548,13 +426,10 @@
                                 break
 
                             case "update":
-                                for (let i = 0; i < this.logs.length; i++) {
-                                    const log = this.logs[i]
-                                    if (log.id == data.entry.id) {
-                                        data.entry._flash = true
-                                        this.logs[i] = data.entry
-                                        break
-                                    }
+                                const index = this.logs.findIndex(log => log.id === data.entry.id)
+                                if (index !== -1) {
+                                    data.entry._flash = true
+                                    this.logs[index] = data.entry
                                 }
                                 break
                         }
@@ -571,32 +446,74 @@
                 },
                 closeModal() {
                     this.selectedLog = null
+                    if (history.state && history.state.logId) {
+                        history.back()
+                    }
                 },
                 addMarker() {
                     this.logs.unshift({ id: '', _marker: true })
                 },
-                init() {
-                    // Close modal on ESC key press
-                    document.addEventListener('keydown', (e) => {
-                        if (e.key === 'Escape' && this.selectedLog !== null) {
-                            e.preventDefault()
-                            this.closeModal()
-                        }
-                    })
+                formatTimestamp(timestamp) {
+                    const date = new Date(timestamp)
+                    const now = new Date()
+                    const diffMs = now - date
+                    const diffMins = Math.floor(diffMs / 60000)
 
-                    // Add marker on SPACE key press
-                    document.addEventListener('keydown', (e) => {
-                        if (e.key === ' ' && this.selectedLog == null) {
-                            e.preventDefault()
-                            this.addMarker()
+                    // Check if same day
+                    if (date.toDateString() === now.toDateString()) {
+                        if (diffMins < 60) {
+                            return `${diffMins}m ago`
                         }
-                    })
+                        const diffHours = Math.floor(diffMins / 60)
+                        return `${diffHours}h ago`
+                    }
 
-                    this.initSSE()
-                    this.fetchLogs(this.currentPage)
+                    return timestamp
+                },
+                prettyJSON(str) {
+                    try {
+                        const obj = JSON.parse(str)
+                        return JSON.stringify(obj, null, 2)
+                    } catch (e) {
+                        return str
+                    }
+                },
+                copyToClipboard(event) {
+                    const pre = event.target.closest('div').querySelector('pre code')
+                    const textToCopy = pre.textContent || pre.innerText
+
+                    navigator.clipboard.writeText(textToCopy)
+                        .then(() => console.log('Copied to clipboard'))
+                        .catch(err => console.error('Error copying text: ', err))
                 }
+            },
+            mounted() {
+                // Close modal on ESC key press
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && this.selectedLog !== null) {
+                        e.preventDefault()
+                        this.closeModal()
+                    }
+                })
+
+                // Add marker on SPACE key press
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === ' ' && this.selectedLog == null) {
+                        e.preventDefault()
+                        this.addMarker()
+                    }
+                })
+
+                window.addEventListener('popstate', (event) => {
+                    if (!event.state || !event.state.logId) {
+                        this.closeModal()
+                    }
+                })
+
+                this.initSSE()
+                this.fetchLogs(this.currentPage)
             }
-        }
+        }).mount('#app')
     </script>
 </body>
 
