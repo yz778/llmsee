@@ -20,8 +20,6 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
-
 var (
 	globalModelJSON []byte // Models cache, store as JSON bytes
 	modelDataMutex  sync.RWMutex
@@ -83,7 +81,7 @@ func decompressBody(body io.Reader, encoding string) (io.Reader, error) {
 }
 
 // processChunks processes the streaming response body chunks and reconstructs the complete object
-func processChunks(chunks [][]byte) string {
+func processChunks(chunks []byte, totalChunks int) string {
 	type Metadata struct {
 		ID                string `json:"id"`
 		Model             string `json:"model"`
@@ -102,62 +100,52 @@ func processChunks(chunks [][]byte) string {
 	var usageStats json.RawMessage
 	var isOpenAISpec = false
 	metadata := Metadata{}
-	totalChunks := len(chunks)
 
-	for _, chunk := range chunks {
-		lines := strings.Split(string(chunk), "\n")
-		for _, line := range lines {
-			if strings.HasPrefix(line, "data: ") {
-				isOpenAISpec = true
-				data := strings.TrimPrefix(line, "data: ")
-				data = strings.TrimSpace(data)
-				if data == "[DONE]" {
-					response := Response{
-						Metadata:    metadata,
-						Content:     strings.TrimSpace(assembledContent.String()),
-						Usage:       &usageStats,
-						TotalChunks: totalChunks,
-					}
-					jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-					return string(jsonResponse)
+	lines := strings.Split(string(chunks), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "data: ") {
+			isOpenAISpec = true
+			data := strings.TrimPrefix(line, "data: ")
+			data = strings.TrimSpace(data)
+			if data == "[DONE]" {
+				break
+			}
+
+			var parsed map[string]interface{}
+			if err := json.Unmarshal([]byte(data), &parsed); err != nil {
+				continue
+			}
+
+			// Store metadata from first chunk
+			if metadata.ID == "" {
+				if id, ok := parsed["id"].(string); ok {
+					metadata.ID = id
 				}
-
-				var parsed map[string]interface{}
-				if err := json.Unmarshal([]byte(data), &parsed); err != nil {
-					continue
+				if model, ok := parsed["model"].(string); ok {
+					metadata.Model = model
 				}
-
-				// Store metadata from first chunk
-				if metadata.ID == "" {
-					if id, ok := parsed["id"].(string); ok {
-						metadata.ID = id
-					}
-					if model, ok := parsed["model"].(string); ok {
-						metadata.Model = model
-					}
-					if fingerprint, ok := parsed["system_fingerprint"].(string); ok {
-						metadata.SystemFingerprint = fingerprint
-					}
-					if created, ok := parsed["created"].(float64); ok {
-						metadata.Created = int64(created)
-					}
+				if fingerprint, ok := parsed["system_fingerprint"].(string); ok {
+					metadata.SystemFingerprint = fingerprint
 				}
+				if created, ok := parsed["created"].(float64); ok {
+					metadata.Created = int64(created)
+				}
+			}
 
-				// Handle content chunks
-				if choices, ok := parsed["choices"].([]interface{}); ok && len(choices) > 0 {
-					if choice, ok := choices[0].(map[string]interface{}); ok {
-						if delta, ok := choice["delta"].(map[string]interface{}); ok {
-							if content, ok := delta["content"].(string); ok {
-								assembledContent.WriteString(content)
-							}
+			// Handle content chunks
+			if choices, ok := parsed["choices"].([]interface{}); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]interface{}); ok {
+					if delta, ok := choice["delta"].(map[string]interface{}); ok {
+						if content, ok := delta["content"].(string); ok {
+							assembledContent.WriteString(content)
 						}
 					}
 				}
+			}
 
-				// Capture usage statistics from final chunk
-				if usage, ok := parsed["usage"]; ok {
-					usageStats, _ = json.Marshal(usage)
-				}
+			// Capture usage statistics from final chunk
+			if usage, ok := parsed["usage"]; ok {
+				usageStats, _ = json.Marshal(usage)
 			}
 		}
 	}
@@ -169,16 +157,11 @@ func processChunks(chunks [][]byte) string {
 			Usage:       &usageStats,
 			TotalChunks: totalChunks,
 		}
-		jsonResponse, _ := json.MarshalIndent(response, "", "  ")
-		return string(jsonResponse)
+		jsonResp, _ := json.MarshalIndent(response, "", "  ")
+		return string(jsonResp)
 
 	} else {
-		// Concatenate all chunks and return as a single string
-		var allChunksContent strings.Builder
-		for _, chunk := range chunks {
-			allChunksContent.Write(chunk)
-		}
-		return allChunksContent.String()
+		return string(chunks)
 	}
 }
 
@@ -196,17 +179,17 @@ func (s *ProxyServer) handleCORS(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func (s *ProxyServer) fetchProviderJSON(ctx context.Context, headers http.Header, url string) (map[string]interface{}, error) {
-	proxyReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+func (s *ProxyServer) fetchRaw(ctx context.Context, headers http.Header, method string, url string) ([]byte, http.Header, error) {
+	r, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, nil, fmt.Errorf("failed to create context: %w", err)
 	}
 
-	proxyReq.Header = headers
+	r.Header = headers
 
-	resp, err := s.client.Do(proxyReq)
+	resp, err := s.client.Do(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make request failed: %w", err)
+		return nil, nil, fmt.Errorf("failed to make request: %w", err)
 	}
 	defer func() {
 		io.Copy(io.Discard, resp.Body)
@@ -215,41 +198,50 @@ func (s *ProxyServer) fetchProviderJSON(ctx context.Context, headers http.Header
 
 	respBuffer, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	encoding := resp.Header.Get("Content-Encoding")
+	return respBuffer, resp.Header, nil
+}
+
+func (s *ProxyServer) fetchJSON(ctx context.Context, headers http.Header, method string, url string) (map[string]interface{}, error) {
+	respBuffer, respHeader, err := s.fetchRaw(ctx, headers, method, url)
+	if err != nil {
+		return nil, err
+	}
+
+	encoding := respHeader.Get("Content-Encoding")
 	if encoding != "" {
-		decompressedReader, err := decompressBody(bytes.NewReader(respBuffer), encoding)
+		reader, err := decompressBody(bytes.NewReader(respBuffer), encoding)
 		if err != nil {
-			return nil, fmt.Errorf("error decompressing response: %w", err)
+			return nil, fmt.Errorf("failed to decompress response: %w", err)
 		}
-		decompressedBody, err := io.ReadAll(decompressedReader)
+		decompressedBody, err := io.ReadAll(reader)
 		if err != nil {
-			return nil, fmt.Errorf("error reading decompressed: %w", err)
+			return nil, fmt.Errorf("failed to read decompressed: %w", err)
 		}
 		respBuffer = decompressedBody
 	}
 
-	var parsed map[string]interface{}
-	if err := json.Unmarshal(respBuffer, &parsed); err != nil {
-		return nil, fmt.Errorf("could not parse response: %w", err)
+	var jsonResp map[string]interface{}
+	if err := json.Unmarshal(respBuffer, &jsonResp); err != nil {
+		return nil, fmt.Errorf("failed to convert to JSON: %w", err)
 	}
 
-	return parsed, nil
+	return jsonResp, nil
 }
 
 func (s *ProxyServer) getGeminiModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
 	url := geminiBaseURL + "/models?key=" + s.config.Providers[provider].ApiKey
 	headers := proxyHeaders(http.Header{}, providerConfig)
 	headers.Del("Authorization")
-	parsed, err := s.fetchProviderJSON(ctx, headers, url)
+	jsonResp, err := s.fetchJSON(ctx, headers, "GET", url)
 	if err != nil {
 		return nil, err
 	}
 
 	var providerModelData []map[string]interface{}
-	if data, ok := parsed["models"].([]interface{}); ok {
+	if data, ok := jsonResp["models"].([]interface{}); ok {
 		for _, item := range data {
 			if obj, ok := item.(map[string]interface{}); ok {
 				if name, exists := obj["name"].(string); exists {
@@ -265,13 +257,13 @@ func (s *ProxyServer) getGeminiModels(ctx context.Context, provider string, prov
 }
 
 func (s *ProxyServer) getModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
-	if strings.HasPrefix(providerConfig.BaseURL, geminiBaseURL) {
+	if providerConfig.IsGemini {
 		return s.getGeminiModels(ctx, provider, providerConfig)
 	}
 
 	url := providerConfig.BaseURL + "/models"
 	headers := proxyHeaders(http.Header{}, providerConfig)
-	parsed, err := s.fetchProviderJSON(ctx, headers, url)
+	parsed, err := s.fetchJSON(ctx, headers, "GET", url)
 
 	if err != nil {
 		return nil, err
@@ -301,7 +293,7 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 	if globalModelJSON != nil {
 		_, err := w.Write(globalModelJSON)
 		if err != nil {
-			log.Printf("Error writing cached response: %v", err)
+			log.Printf("failed writing model cache: %v", err)
 		}
 		modelDataMutex.RUnlock()
 		return
@@ -321,7 +313,7 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			providerModelData, err := s.getModels(ctx, p, pc)
 			if err != nil {
-				log.Printf("Error fetching models from %s: %v", p, err)
+				log.Printf("failed to get models from %s: %v", p, err)
 				return
 			}
 
@@ -344,7 +336,7 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 	// Marshal once, store the result
 	respBuffer, err := json.Marshal(allModels)
 	if err != nil {
-		http.Error(w, `{"error":"Could not marshal models"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"failed to marshal models"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -354,7 +346,7 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 
 	_, err = w.Write(respBuffer) // Write the same JSON bytes
 	if err != nil {
-		log.Printf("Error writing response: %v", err)
+		log.Printf("failed to write response: %v", err)
 		return
 	}
 }
@@ -401,104 +393,101 @@ func (s *ProxyServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // handleProxy processes incoming proxy requests
 func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/" {
-		s.handleIndex(w, r)
-		return
-	}
-
 	// Handle CORS
 	if s.handleCORS(w, r) {
 		return
 	}
 
+	// Handle index
+	if r.URL.Path == "/" {
+		s.handleIndex(w, r)
+		return
+	}
+
 	// Make sure body isn't too big
 	r.Body = http.MaxBytesReader(w, r.Body, httpMaxRequestBodySize)
+	defer r.Body.Close()
 
-	// Process provider
+	// Get provider
 	provider, remainingPath := parseProvider(r)
+	v1Request := provider == "v1"
 
-	// Special handler for /v1 router
-	if provider == "v1" {
-		if r.Method == "GET" && remainingPath == "models" {
-			s.getAllModels(w, r)
-			return
+	// Special handler for /v1 router models
+	if v1Request && r.Method == "GET" && remainingPath == "models" {
+		s.getAllModels(w, r)
+		return
+	}
 
-		} else {
-			// rewrite the body with modified model
-			var parsed map[string]interface{}
-			bodyBytes, _ := io.ReadAll(r.Body)
-			if err := json.Unmarshal([]byte(bodyBytes), &parsed); err != nil {
-				http.Error(w, `404 page not found (API request missing)`, http.StatusNotFound)
-				return
-			}
+	// bytes -> json
+	var bodyJSON map[string]interface{}
+	bodyBytes, _ := io.ReadAll(r.Body)
+	if err := json.Unmarshal([]byte(bodyBytes), &bodyJSON); err != nil {
+		http.Error(w, `{"error":"Failed to read request body"}`, http.StatusInternalServerError)
+		return
+	}
 
-			if model, ok := parsed["model"].(string); ok {
-				parts := strings.SplitN(model, ":", 2) // <provider>:<model>
-				provider = parts[0]
-				model = parts[1]
-				parsed["model"] = model
-				bodyBytes, err := json.Marshal(parsed)
-				if err != nil {
-					http.Error(w, `{"error":"Could not mangle model"}`, http.StatusInternalServerError)
-					return
-				}
-				r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			}
+	// for /v1 requests, rewrite the model name
+	if v1Request {
+		if model, ok := bodyJSON["model"].(string); ok {
+			parts := strings.SplitN(model, ":", 2) // <provider>:<model>
+			provider = parts[0]
+			model = parts[1]
+			bodyJSON["model"] = model
 		}
 	}
 
+	// verify the provider
 	providerConfig, ok := s.config.Providers[provider]
 	if !ok {
 		http.Error(w, `{"error":"Invalid provider"}`, http.StatusBadRequest)
 		return
 	}
 
+	// special handling for Gemini
+	if providerConfig.IsGemini {
+		delete(bodyJSON, "frequency_penalty")
+	}
+
+	// json -> bytes
+	bodyBytes, err := json.Marshal(bodyJSON)
+	if err != nil {
+		http.Error(w, `{"error":"Could not mangle model"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// set target url
 	targetURL := providerConfig.BaseURL + "/" + remainingPath
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
 	}
 
-	// Process request body
-	var bodyBuffer []byte
-	var err error
-	if r.Method == http.MethodPost || r.Method == http.MethodPut {
-		bodyBuffer, err = io.ReadAll(io.LimitReader(r.Body, httpMaxRequestBodySize))
-		if err != nil {
-			if err.Error() == "http: request body too large" {
-				http.Error(w, `{"error":"Request body too large"}`, http.StatusRequestEntityTooLarge)
-				return
-			}
-			http.Error(w, `{"error":"Failed to read request body"}`, http.StatusInternalServerError)
-			return
-		}
-		defer r.Body.Close()
-	}
-
+	// log initial request
 	startTime := time.Now()
 	reqHeadersJSON, _ := json.Marshal(r.Header)
 	entry := LogEntry{
 		Timestamp:       startTime.UTC().Format(time.RFC3339),
 		Provider:        provider,
+		Model:           bodyJSON["model"].(string),
 		Method:          r.Method,
 		TargetURL:       targetURL,
 		RequestHeaders:  string(reqHeadersJSON),
-		RequestBody:     string(bodyBuffer),
-		RequestBodySize: len(bodyBuffer),
+		RequestBody:     string(bodyBytes),
+		RequestBodySize: len(bodyBytes),
 		UserAgent:       r.UserAgent(),
 	}
 
-	// log the request
-	id, model, err := s.insertLogRequest(entry)
+	id, err := s.insertLogRequest(entry)
 	if err != nil {
-		log.Printf("Error logging initial request: %v", err)
+		log.Printf("failed to log initial request: %v", err)
 	}
-	entry.Id = id
-	entry.Model = model
 
+	entry.Id = id
+
+	// send request to target
 	ctx, cancel := context.WithTimeout(r.Context(), httpRequestTimeout)
 	defer cancel()
 
-	proxyReq, err := http.NewRequestWithContext(ctx, r.Method, targetURL, strings.NewReader(string(bodyBuffer)))
+	proxyReq, err := http.NewRequestWithContext(ctx, r.Method, targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		http.Error(w, `{"error":"Failed to create proxy request"}`, http.StatusInternalServerError)
 		return
@@ -517,99 +506,99 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		resp.Body.Close()
 	}()
 
-	isStreaming := r.URL.Query().Get("stream") == "true"
-	if bodyBuffer != nil {
-		var reqJSON map[string]interface{}
-		if err := json.Unmarshal(bodyBuffer, &reqJSON); err == nil {
-			if streamVal, ok := reqJSON["stream"].(bool); ok {
-				isStreaming = isStreaming || streamVal
-			}
-		}
-	}
-
-	// Copy response headers, skip for CORS
+	// Copy response headers w/o CORS
 	for k, v := range resp.Header {
 		if !strings.HasPrefix(k, "Access-Control") {
 			w.Header()[k] = v
 		}
 	}
-	w.WriteHeader(resp.StatusCode)
 
 	var responseBody string
 	encoding := resp.Header.Get("Content-Encoding")
+	isStreaming := resp.Header.Get("Content-Type") == "text/event-stream"
 
 	if isStreaming {
 		var reader io.Reader = resp.Body
+		var combinedData bytes.Buffer
 
-		if encoding != "" {
-			decompressedReader, err := decompressBody(resp.Body, encoding)
-			if err != nil {
-				log.Printf("Error decompressing streaming response: %v", err)
-				http.Error(w, `{"error":"Failed to decompress streaming response"}`, http.StatusInternalServerError)
-				return
-			}
-			reader = decompressedReader
-		}
-
-		var chunks [][]byte
+		totalChunks := 0
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := reader.Read(buf)
 			if n > 0 {
-				chunk := make([]byte, n)
-				copy(chunk, buf[:n])
-				chunks = append(chunks, chunk)
-				_, err := w.Write(chunk)
+				totalChunks++
+
+				// write to client
+				_, err := w.Write(buf[:n])
 				if err != nil {
-					log.Printf("Error writing chunk: %v", err)
+					log.Printf("failed to write chunk: %v", err)
 					break
 				}
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
 				}
+
+				// accumulate data for logging
+				combinedData.Write(buf[:n])
 			}
 			if err == io.EOF {
 				break
 			}
 			if err != nil {
-				log.Printf("Error reading chunk: %v", err)
+				log.Printf("failed to read chunk: %v", err)
 				break
 			}
 		}
-		responseBody = processChunks(chunks)
+
+		data := combinedData.Bytes()
+		if encoding != "" {
+			reader, err := decompressBody(bytes.NewReader(data), encoding)
+			if err != nil {
+				log.Printf("failed to create decompression reader: %v", err)
+			} else {
+				decompressedData, err := io.ReadAll(reader)
+				if err != nil {
+					log.Printf("failed to decompress data: %v", err)
+				} else {
+					data = decompressedData
+				}
+			}
+		}
+
+		responseBody = processChunks(data, totalChunks)
 
 	} else {
+		// read response
 		respBuffer, err := io.ReadAll(resp.Body)
 		if err != nil {
 			http.Error(w, `{"error":"Failed to read response body"}`, http.StatusInternalServerError)
 			return
 		}
 
-		// Handle compressed responses
+		// write response to caller
+		_, err = w.Write(respBuffer)
+		if err != nil {
+			log.Printf("failed to write response: %v", err)
+		}
+
+		// prep response body for logging
 		if encoding == "" {
 			responseBody = string(respBuffer)
 
 		} else {
 			decompressedReader, err := decompressBody(bytes.NewReader(respBuffer), encoding)
 			if err != nil {
-				log.Printf("Error decompressing response: %v", err)
+				log.Printf("failed to decompress response: %v", err)
 				http.Error(w, `{"error":"Failed to decompress response"}`, http.StatusInternalServerError)
 				return
 			}
 			decompressedBody, err := io.ReadAll(decompressedReader)
 			if err != nil {
-				log.Printf("Error reading decompressed response: %v", err)
+				log.Printf("failed to read decompressed response: %v", err)
 				http.Error(w, `{"error":"Failed to read decompressed response"}`, http.StatusInternalServerError)
 				return
 			}
 			responseBody = string(decompressedBody)
-		}
-
-		// Write original response to client
-		_, err = w.Write(respBuffer)
-		if err != nil {
-			log.Printf("Error writing response: %v", err)
-			return
 		}
 	}
 
@@ -621,6 +610,6 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	entry.ResponseBodySize = len(responseBody)
 	entry.DurationMs = int(time.Since(startTime).Milliseconds())
 	if err := s.updateLogRequest(entry); err != nil {
-		log.Printf("Error updating request log: %v", err)
+		log.Printf("failed to update request log: %v", err)
 	}
 }

@@ -96,7 +96,7 @@ func (s *ProxyServer) handleSse(w http.ResponseWriter, r *http.Request) {
 			}
 			jsonData, err := json.Marshal(update)
 			if err != nil {
-				log.Printf("Error marshaling update: %v", err)
+				log.Printf("failed to encode update: %v", err)
 				continue
 			}
 			fmt.Fprintf(w, "data: %s\n\n", jsonData)

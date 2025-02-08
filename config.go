@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -29,6 +30,8 @@ const (
 	shutdownTimeout           = 10 * time.Second // Timeout for graceful shutdown
 )
 
+const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+
 // Configuration structs
 type Config struct {
 	Host         string                    `json:"host"`
@@ -43,6 +46,7 @@ type ProviderConfig struct {
 	ApiKey        string            `json:"apikey"`
 	HeaderMapping map[string]string `json:"headermapping"`
 	Enabled       *bool             `json:"enabled"`
+	IsGemini      bool              `json:"-"`
 }
 
 func (p *ProviderConfig) IsEnabled() bool {
@@ -110,20 +114,25 @@ func getConfig() (config *Config, err error) {
 		config.PageSize = defaultConfig.PageSize
 	}
 
+	// if there are no providers, assign the defaults
 	if config.Providers == nil {
 		config.Providers = make(map[string]ProviderConfig)
-	}
-
-	for providerName, defaultProviderConfig := range defaultConfig.Providers {
-		if _, exists := config.Providers[providerName]; !exists {
-			config.Providers[providerName] = defaultProviderConfig
+		for provider, defaultProviderConfig := range defaultConfig.Providers {
+			if _, exists := config.Providers[provider]; !exists {
+				config.Providers[provider] = defaultProviderConfig
+			}
 		}
 	}
 
-	// remove providers that arent' enabled
-	for providerName, providerConfig := range config.Providers {
+	// process providers
+	for provider, providerConfig := range config.Providers {
 		if !providerConfig.IsEnabled() {
-			delete(config.Providers, providerName)
+			delete(config.Providers, provider)
+		}
+
+		if strings.HasPrefix(providerConfig.BaseURL, geminiBaseURL) {
+			providerConfig.IsGemini = true
+			config.Providers[provider] = providerConfig
 		}
 	}
 
