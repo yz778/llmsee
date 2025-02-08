@@ -215,7 +215,7 @@
 
         #controls {
             display: flex;
-            justify-content: left;
+            justify-content: flex-start;
             align-items: left;
             gap: 5px;
             margin-top: 5px;
@@ -281,7 +281,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <template v-for="(log, index) in logs" :key="log.id">
+                            <template v-for="(log, index) in logs" :key="log.id||'m'+index">
                                 <tr v-if="log._marker" class="marker">
                                     <td colspan="10"></td>
                                 </tr>
@@ -372,6 +372,7 @@
                     totalPages: 1,
                     loading: true,
                     loadingDetail: false,
+                    sse: null,
                     sseRetries: 0,
                     selectedLog: null,
                     clientID: "",
@@ -410,11 +411,11 @@
                     }
                 },
                 initSSE() {
-                    const eventSource = new EventSource("/ui/sse")
+                    this.sse = new EventSource("/ui/sse")
 
-                    eventSource.onmessage = (event) => {
+                    this.sse.onmessage = (e) => {
                         this.sseRetries = 0
-                        const data = JSON.parse(event.data)
+                        const data = JSON.parse(e.data)
                         switch (data?.eventType) {
                             case "init":
                                 this.clientID = data.clientID
@@ -435,9 +436,9 @@
                         }
                     }
 
-                    eventSource.onerror = (error) => {
+                    this.sse.onerror = (error) => {
                         const delay = Math.pow(2, ++this.sseRetries) * 1000
-                        eventSource.close()
+                        this.sse.close()
                         setTimeout(() => {
                             console.error("SSE Error, retry in", delay, "seconds")
                             this.initSSE()
@@ -478,40 +479,49 @@
                         return str
                     }
                 },
-                copyToClipboard(event) {
-                    const pre = event.target.closest('div').querySelector('pre code')
+                copyToClipboard(e) {
+                    const pre = e.target.closest('div').querySelector('pre code')
                     const textToCopy = pre.textContent || pre.innerText
 
                     navigator.clipboard.writeText(textToCopy)
                         .then(() => console.log('Copied to clipboard'))
                         .catch(err => console.error('Error copying text: ', err))
-                }
-            },
-            mounted() {
-                // Close modal on ESC key press
-                document.addEventListener('keydown', (e) => {
+                },
+                escKeyListener(e) {
                     if (e.key === 'Escape' && this.selectedLog !== null) {
                         e.preventDefault()
                         this.closeModal()
                     }
-                })
-
-                // Add marker on SPACE key press
-                document.addEventListener('keydown', (e) => {
+                },
+                spaceKeyListener(e) {
                     if (e.key === ' ' && this.selectedLog == null) {
                         e.preventDefault()
                         this.addMarker()
                     }
-                })
-
-                window.addEventListener('popstate', (event) => {
-                    if (!event.state || !event.state.logId) {
+                },
+                popStateListener(e) {
+                    if (!e.state || !e.state.logId) {
                         this.closeModal()
                     }
-                })
+                },
+            },
+            mounted() {
+                document.addEventListener('keydown', this.escKeyListener)
+                document.addEventListener('keydown', this.spaceKeyListener)
+                window.addEventListener('popstate', this.popStateListener)
 
                 this.initSSE()
                 this.fetchLogs(this.currentPage)
+            },
+            beforeUnmount() {
+                document.removeEventListener('keydown', this.escKeyListener)
+                document.removeEventListener('keydown', this.spaceKeyListener)
+                window.removeEventListener('popstate', this.popStateListener)
+
+                if (this.sse) {
+                    this.sse.close()
+                    this.sse = null
+                }
             }
         }).mount('#app')
     </script>
