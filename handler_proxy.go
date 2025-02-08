@@ -568,23 +568,28 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		responseBody = processChunks(data, totalChunks)
 
 	} else {
-		// read response
-		respBuffer, err := io.ReadAll(resp.Body)
+		// Create a buffer to store the response body for logging
+		var logBuffer bytes.Buffer
+
+		// Use io.TeeReader to read the response body once and write to both the client and logBuffer
+		teeReader := io.TeeReader(resp.Body, &logBuffer)
+
+		// Read the response body from the TeeReader
+		respBuffer, err := io.ReadAll(teeReader)
 		if err != nil {
 			http.Error(w, `{"error":"Failed to read response body"}`, http.StatusInternalServerError)
 			return
 		}
 
-		// write response to caller
+		// Write the response to the client
 		_, err = w.Write(respBuffer)
 		if err != nil {
 			log.Printf("failed to write response: %v", err)
 		}
 
-		// prep response body for logging
+		// Prepare response body for logging
 		if encoding == "" {
-			responseBody = string(respBuffer)
-
+			responseBody = logBuffer.String()
 		} else {
 			decompressedReader, err := decompressBody(bytes.NewReader(respBuffer), encoding)
 			if err != nil {
