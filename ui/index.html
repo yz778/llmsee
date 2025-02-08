@@ -215,7 +215,7 @@
 
         #controls {
             display: flex;
-            justify-content: left;
+            justify-content: flex-start;
             align-items: left;
             gap: 5px;
             margin-top: 5px;
@@ -281,7 +281,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <template v-for="(log, index) in logs" :key="log.id">
+                            <template v-for="(log, index) in logs" :key="log.id||index">
                                 <tr v-if="log._marker" class="marker">
                                     <td colspan="10"></td>
                                 </tr>
@@ -374,6 +374,7 @@
                     loadingDetail: false,
                     sseRetries: 0,
                     selectedLog: null,
+                    eventSource: null,
                     clientID: "",
                     svgCopy: "<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4' fill='none' viewBox='0 0 24 24' stroke='currentColor'>"
                         + "<path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z' />"
@@ -410,7 +411,7 @@
                     }
                 },
                 initSSE() {
-                    const eventSource = new EventSource("/ui/sse")
+                    eventSource = new EventSource("/ui/sse")
 
                     eventSource.onmessage = (event) => {
                         this.sseRetries = 0
@@ -512,6 +513,16 @@
 
                 this.initSSE()
                 this.fetchLogs(this.currentPage)
+            },
+            beforeUnmount() {
+                document.removeEventListener('keydown', this.escKeyListener)
+                document.removeEventListener('keydown', this.spaceKeyListener)
+                window.removeEventListener('popstate', this.popStateListener)
+
+                if (this.eventSource) {
+                    this.eventSource.close()
+                    this.eventSource = null
+                }
             }
         }).mount('#app')
     </script>
