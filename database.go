@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"regexp"
 	"time"
 )
 
@@ -90,14 +89,7 @@ func initializeDatabase(db *sql.DB) error {
 }
 
 // insertLogRequest stores the request logs into the database
-func (s *ProxyServer) insertLogRequest(entry LogEntry) (id int64, model string, err error) {
-	// Get model from request, use regexp instead of deserializing JSON
-	re := regexp.MustCompile(`(?i)"model"\s*:\s*"(.*?)"`)
-	match := re.FindStringSubmatch(entry.RequestBody)
-	if len(match) > 1 {
-		model = match[1]
-	}
-
+func (s *ProxyServer) insertLogRequest(entry LogEntry) (id int64, err error) {
 	result, err := s.db.Exec(`
 		INSERT INTO logs (
 			timestamp,
@@ -115,7 +107,7 @@ func (s *ProxyServer) insertLogRequest(entry LogEntry) (id int64, model string, 
 		entry.Timestamp,
 		entry.Provider,
 		entry.Method,
-		model,
+		entry.Model,
 		entry.TargetURL,
 		entry.RequestHeaders,
 		entry.RequestBody,
@@ -124,21 +116,20 @@ func (s *ProxyServer) insertLogRequest(entry LogEntry) (id int64, model string, 
 		entry.UserAgent,
 	)
 	if err != nil {
-		return 0, model, err
+		return 0, err
 	}
 
 	id, err = result.LastInsertId()
 	if err != nil {
-		return 0, model, err
+		return 0, err
 	}
 
 	entry.Id = id
-	entry.Model = model
 
 	log.Printf("[ID:%d] %s %s %s %d bytes sent", id, entry.Provider, entry.Method, entry.TargetURL, entry.RequestBodySize)
 	s.sendSSEUpdate(ServerUpdate{EventType: "insert", Entry: entry})
 
-	return id, model, nil
+	return id, nil
 }
 
 // updateLogRequest updates the log entry with response details and duration
