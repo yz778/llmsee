@@ -420,7 +420,15 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	// bytes -> json
 	var bodyJSON map[string]interface{}
-	bodyBytes, _ := io.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+	    if err.Error() == "http: request body too large" {
+	        http.Error(w, `{"error":"Request body too large"}`, http.StatusRequestEntityTooLarge)
+	    } else {
+	        http.Error(w, `{"error":"Failed to read request body"}`, http.StatusInternalServerError)
+	    }
+	    return
+	}
 	if err := json.Unmarshal([]byte(bodyBytes), &bodyJSON); err != nil {
 		http.Error(w, `{"error":"Failed to read request body"}`, http.StatusInternalServerError)
 		return
