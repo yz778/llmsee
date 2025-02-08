@@ -42,6 +42,7 @@ type ProviderConfig struct {
 	BaseURL       string            `json:"baseurl"`
 	ApiKey        string            `json:"apikey"`
 	HeaderMapping map[string]string `json:"headermapping"`
+	Models        *[]string         `json:"models"`
 	Enabled       *bool             `json:"enabled"`
 }
 
