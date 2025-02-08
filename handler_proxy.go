@@ -80,91 +80,6 @@ func decompressBody(body io.Reader, encoding string) (io.Reader, error) {
 	}
 }
 
-// processChunks processes the streaming response body chunks and reconstructs the complete object
-func processChunks(chunks []byte, totalChunks int) string {
-	type Metadata struct {
-		ID                string `json:"id"`
-		Model             string `json:"model"`
-		SystemFingerprint string `json:"system_fingerprint"`
-		Created           int64  `json:"created"`
-	}
-
-	type Response struct {
-		Metadata    Metadata         `json:"metadata"`
-		Content     string           `json:"content"`
-		Usage       *json.RawMessage `json:"usage"`
-		TotalChunks int              `json:"total_chunks"`
-	}
-
-	var assembledContent strings.Builder
-	var usageStats json.RawMessage
-	var isOpenAISpec = false
-	metadata := Metadata{}
-
-	lines := strings.Split(string(chunks), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "data: ") {
-			isOpenAISpec = true
-			data := strings.TrimPrefix(line, "data: ")
-			data = strings.TrimSpace(data)
-			if data == "[DONE]" {
-				break
-			}
-
-			var parsed map[string]interface{}
-			if err := json.Unmarshal([]byte(data), &parsed); err != nil {
-				continue
-			}
-
-			// Store metadata from first chunk
-			if metadata.ID == "" {
-				if id, ok := parsed["id"].(string); ok {
-					metadata.ID = id
-				}
-				if model, ok := parsed["model"].(string); ok {
-					metadata.Model = model
-				}
-				if fingerprint, ok := parsed["system_fingerprint"].(string); ok {
-					metadata.SystemFingerprint = fingerprint
-				}
-				if created, ok := parsed["created"].(float64); ok {
-					metadata.Created = int64(created)
-				}
-			}
-
-			// Handle content chunks
-			if choices, ok := parsed["choices"].([]interface{}); ok && len(choices) > 0 {
-				if choice, ok := choices[0].(map[string]interface{}); ok {
-					if delta, ok := choice["delta"].(map[string]interface{}); ok {
-						if content, ok := delta["content"].(string); ok {
-							assembledContent.WriteString(content)
-						}
-					}
-				}
-			}
-
-			// Capture usage statistics from final chunk
-			if usage, ok := parsed["usage"]; ok {
-				usageStats, _ = json.Marshal(usage)
-			}
-		}
-	}
-
-	if isOpenAISpec {
-		response := Response{
-			Metadata:    metadata,
-			Content:     strings.TrimSpace(assembledContent.String()),
-			Usage:       &usageStats,
-			TotalChunks: totalChunks,
-		}
-		jsonResp, _ := json.MarshalIndent(response, "", "  ")
-		return string(jsonResp)
-
-	} else {
-		return string(chunks)
-	}
-}
-
 func (s *ProxyServer) handleCORS(w http.ResponseWriter, r *http.Request) bool {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -521,13 +436,10 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		var reader io.Reader = resp.Body
 		var combinedData bytes.Buffer
 
-		totalChunks := 0
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := reader.Read(buf)
 			if n > 0 {
-				totalChunks++
-
 				// write to client
 				_, err := w.Write(buf[:n])
 				if err != nil {
@@ -565,7 +477,7 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		responseBody = processChunks(data, totalChunks)
+		responseBody = string(data)
 
 	} else {
 		// read response
