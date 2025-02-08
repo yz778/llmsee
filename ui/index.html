@@ -281,7 +281,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <template v-for="(log, index) in logs" :key="log.id||index">
+                            <template v-for="(log, index) in logs" :key="log.id||'m'+index">
                                 <tr v-if="log._marker" class="marker">
                                     <td colspan="10"></td>
                                 </tr>
