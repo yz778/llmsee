@@ -396,6 +396,10 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	// for /v1 requests, extract the provider and model name
 	if v1Request {
 		parts := strings.SplitN(model, ":", 2) // <provider>:<model>
+		if len(parts) < 2 {
+			http.Error(w, `{"error":"Failed to identify provider and model, this is an empty request"}`, http.StatusNotFound)
+			return
+		}
 		provider = parts[0]
 		model = parts[1]
 		bodyJSON["model"] = model
