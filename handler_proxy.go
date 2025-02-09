@@ -146,8 +146,8 @@ func (s *ProxyServer) fetchJSON(ctx context.Context, headers http.Header, method
 	return jsonResp, nil
 }
 
-func (s *ProxyServer) getGeminiModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
-	url := geminiBaseURL + "/models?key=" + s.config.Providers[provider].ApiKey
+func (s *ProxyServer) getGeminiModels(ctx context.Context, providerConfig ProviderConfig) (models []map[string]interface{}, err error) {
+	url := geminiBaseURL + "/models?key=" + providerConfig.ApiKey
 	headers := proxyHeaders(http.Header{}, providerConfig)
 	headers.Del("Authorization")
 	jsonResp, err := s.fetchJSON(ctx, headers, "GET", url)
@@ -155,25 +155,39 @@ func (s *ProxyServer) getGeminiModels(ctx context.Context, provider string, prov
 		return nil, err
 	}
 
-	var providerModelData []map[string]interface{}
 	if data, ok := jsonResp["models"].([]interface{}); ok {
 		for _, item := range data {
 			if obj, ok := item.(map[string]interface{}); ok {
 				if name, exists := obj["name"].(string); exists {
 					name = strings.Replace(name, "models/", "", 1)
-					obj["name"] = provider + ":" + name
-					obj["id"] = obj["name"]
+					obj["name"] = name
+					obj["id"] = name
 				}
-				providerModelData = append(providerModelData, obj)
+				models = append(models, obj)
 			}
 		}
 	}
-	return providerModelData, nil
+	return models, nil
 }
 
-func (s *ProxyServer) getModels(ctx context.Context, provider string, providerConfig ProviderConfig) ([]map[string]interface{}, error) {
+func (s *ProxyServer) getModels(ctx context.Context, providerConfig ProviderConfig) (models []map[string]interface{}, err error) {
+	// handle custom provider models
+	if providerConfig.Models != nil {
+		var data []map[string]interface{}
+
+		for _, model := range *providerConfig.Models {
+			m := map[string]interface{}{
+				"id": model,
+			}
+			data = append(data, m)
+		}
+
+		return data, nil
+	}
+
+	// handling for gemini models
 	if providerConfig.IsGemini {
-		return s.getGeminiModels(ctx, provider, providerConfig)
+		return s.getGeminiModels(ctx, providerConfig)
 	}
 
 	url := providerConfig.BaseURL + "/models"
@@ -184,21 +198,14 @@ func (s *ProxyServer) getModels(ctx context.Context, provider string, providerCo
 		return nil, err
 	}
 
-	var providerModelData []map[string]interface{}
 	if data, ok := parsed["data"].([]interface{}); ok {
 		for _, item := range data {
 			if obj, ok := item.(map[string]interface{}); ok {
-				if id, exists := obj["id"].(string); exists {
-					obj["id"] = provider + ":" + id
-				}
-				if name, exists := obj["name"].(string); exists {
-					obj["name"] = provider + ":" + name
-				}
-				providerModelData = append(providerModelData, obj)
+				models = append(models, obj)
 			}
 		}
 	}
-	return providerModelData, nil
+	return models, nil
 }
 
 func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
@@ -224,16 +231,25 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 
 	for provider, providerConfig := range s.config.Providers {
 		wg.Add(1)
-		go func(p string, pc ProviderConfig) {
+		go func(provider string, providerConfig ProviderConfig) {
 			defer wg.Done()
-			providerModelData, err := s.getModels(ctx, p, pc)
+			models, err := s.getModels(ctx, providerConfig)
 			if err != nil {
-				log.Printf("failed to get models from %s: %v", p, err)
+				log.Printf("failed to get models from %s: %v", provider, err)
 				return
 			}
 
+			for _, m := range models {
+				if id, exists := m["id"].(string); exists {
+					m["id"] = provider + ":" + id
+				}
+				if name, exists := m["name"].(string); exists {
+					m["name"] = provider + ":" + name
+				}
+			}
+
 			mu.Lock()
-			combinedModelData = append(combinedModelData, providerModelData...)
+			combinedModelData = append(combinedModelData, models...)
 			mu.Unlock()
 		}(provider, providerConfig)
 	}
@@ -260,6 +276,36 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 	modelDataMutex.Unlock()
 
 	_, err = w.Write(respBuffer) // Write the same JSON bytes
+	if err != nil {
+		log.Printf("failed to write response: %v", err)
+		return
+	}
+}
+
+func writeModels(w http.ResponseWriter, providerConfig ProviderConfig) {
+	var data []map[string]interface{}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	for _, model := range *providerConfig.Models {
+		m := map[string]interface{}{
+			"id": model,
+		}
+		data = append(data, m)
+	}
+
+	models := map[string]interface{}{
+		"object": "list",
+		"data":   data,
+	}
+
+	respBuffer, err := json.Marshal(models)
+	if err != nil {
+		http.Error(w, `{"error":"failed to marshal models"}`, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = w.Write(respBuffer)
 	if err != nil {
 		log.Printf("failed to write response: %v", err)
 		return
@@ -333,22 +379,26 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var model string
+
 	// bytes -> json
 	var bodyJSON map[string]interface{}
 	bodyBytes, _ := io.ReadAll(r.Body)
-	if err := json.Unmarshal([]byte(bodyBytes), &bodyJSON); err != nil {
-		http.Error(w, `{"error":"Failed to read request body"}`, http.StatusInternalServerError)
-		return
+	if len(bodyBytes) > 0 {
+		if err := json.Unmarshal([]byte(bodyBytes), &bodyJSON); err != nil {
+			http.Error(w, `{"error":"Failed to read request body"}`, http.StatusInternalServerError)
+			return
+		}
+
+		model = bodyJSON["model"].(string)
 	}
 
-	// for /v1 requests, rewrite the model name
+	// for /v1 requests, extract the provider and model name
 	if v1Request {
-		if model, ok := bodyJSON["model"].(string); ok {
-			parts := strings.SplitN(model, ":", 2) // <provider>:<model>
-			provider = parts[0]
-			model = parts[1]
-			bodyJSON["model"] = model
-		}
+		parts := strings.SplitN(model, ":", 2) // <provider>:<model>
+		provider = parts[0]
+		model = parts[1]
+		bodyJSON["model"] = model
 	}
 
 	// verify the provider
@@ -358,16 +408,15 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// intercept models request if provider has models configured
+	if r.Method == "GET" && remainingPath == "models" && providerConfig.Models != nil {
+		writeModels(w, providerConfig)
+		return
+	}
+
 	// special handling for Gemini
 	if providerConfig.IsGemini {
 		delete(bodyJSON, "frequency_penalty")
-	}
-
-	// json -> bytes
-	bodyBytes, err := json.Marshal(bodyJSON)
-	if err != nil {
-		http.Error(w, `{"error":"Could not mangle model"}`, http.StatusInternalServerError)
-		return
 	}
 
 	// set target url
@@ -382,7 +431,7 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	entry := LogEntry{
 		Timestamp:       startTime.UTC().Format(time.RFC3339),
 		Provider:        provider,
-		Model:           bodyJSON["model"].(string),
+		Model:           model,
 		Method:          r.Method,
 		TargetURL:       targetURL,
 		RequestHeaders:  string(reqHeadersJSON),
@@ -402,6 +451,9 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), httpRequestTimeout)
 	defer cancel()
 
+	if bodyJSON != nil {
+		bodyBytes, _ = json.Marshal(bodyJSON)
+	}
 	proxyReq, err := http.NewRequestWithContext(ctx, r.Method, targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		http.Error(w, `{"error":"Failed to create proxy request"}`, http.StatusInternalServerError)
