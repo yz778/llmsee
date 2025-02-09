@@ -397,7 +397,9 @@
                                 <div>Response Body</div>
                                 <div v-if="selectedLog.response_body">
                                     <div class="button-container">
-                                        <button @click="toggleResponseBody" class="copy-btn" v-html="isRenderingBody ? '...' : svgCode"></button>
+                                        <template v-if="this.selectedLog._responseBodyHasChunks">
+                                            <button @click="toggleResponseBody" class="copy-btn" v-html="isRenderingBody ? '...' : svgCode"></button>
+                                        </template>
                                         <button @click="copyToClipboard" v-html="svgCopy"></button>
                                     </div>
                                     <pre><code ref="responseBodyCode" class="language-json">{{ prettyJSON(selectedLog.response_body) }}</code></pre>
@@ -452,9 +454,51 @@
                         const data = await response.json()
                         history.pushState({ logId: id }, '', `#${id}`)
                         this.selectedLog = data
+                        this.selectedLog._responseBodyHasChunks = this.selectedLog.response_body.indexOf("data:") !== -1
+
+                        if (this.selectedLog._responseBodyHasChunks) {
+                            // init _rawResponse
+                            this.selectedLog._rawResponse = structuredClone(this.selectedLog.response_body)
+
+                            // init _parsedResponse
+                            this.selectedLog._parsedResponse = this.selectedLog._rawResponse
+                                .split('data: ')
+                                .reduce((acc, chunk) => {
+                                    if (!chunk.startsWith('[DONE]') && chunk.trim()) {
+                                        try {
+                                            acc.push(JSON.parse(chunk))
+                                        } catch (e) {
+                                            console.error('Failed to parse chunk:', chunk, e)
+                                        }
+                                    }
+                                    return acc
+                                }, [])
+
+                            // init _combinedResponse
+                            const content = this.selectedLog._parsedResponse
+                                .map((entry) => entry.choices?.[0]?.delta?.content || '')
+                                .join('')
+                            const data = {
+                                role: this.selectedLog._parsedResponse[0].choices?.[0]?.delta?.role || '',
+                                content,
+                                chunks: this.selectedLog._parsedResponse.length
+                            }
+                            this.selectedLog._combinedResponse = {
+                                ...this.selectedLog._parsedResponse[this.selectedLog._parsedResponse.length - 1], data
+                            }
+                            delete this.selectedLog._combinedResponse.choices
+
+                            // default to combined
+                            this.selectedLog._responseMode = 2
+                            this.selectedLog.response_body = this.selectedLog._combinedResponse
+
+                        }
+
                         this.$nextTick(() => Prism.highlightAll())
+
                     } catch (error) {
                         console.error('Error fetching log detail:', error)
+
                     } finally {
                         this.loadingDetail = false
                     }
@@ -529,58 +573,20 @@
                     }
                 },
                 toggleResponseBody(e) {
-                    // responseMode:
-                    // 0 - raw (default)
-                    // 1 - parsed
-                    // 2 - combined
+                    if (!this.selectedLog._responseBodyHasChunks) return
 
                     this.isRenderingBody = true
 
-                    const log = this.selectedLog
-                    if (typeof log._responseMode === 'undefined') {
-                        log._responseMode = 0
-
-                        // init _rawResponse
-                        log._rawResponse = structuredClone(log.response_body)
-
-                        // init _rawResponse
-                        log._parsedResponse = log._rawResponse
-                            .split('data: ')
-                            .reduce((acc, chunk) => {
-                                if (!chunk.startsWith('[DONE]') && chunk.trim()) {
-                                    try {
-                                        acc.push(JSON.parse(chunk))
-                                    } catch (e) {
-                                        console.error('Failed to parse chunk:', chunk, e)
-                                    }
-                                }
-                                return acc
-                            }, [])
-
-                        // init _combinedResponse
-                        const content = log._parsedResponse
-                            .map((entry) => entry.choices?.[0]?.delta?.content || '')
-                            .join('')
-                        const data = {
-                            role: log._parsedResponse[0].choices?.[0]?.delta?.role || '',
-                            content
-                        }
-                        log._combinedResponse = {
-                            ...log._parsedResponse[log._parsedResponse.length - 1], data
-                        }
-                        delete log._combinedResponse.choices
-                    }
-
-                    switch (++log._responseMode) {
+                    switch (++this.selectedLog._responseMode) {
                         case 2:
-                            log.response_body = log._combinedResponse
+                            this.selectedLog.response_body = this.selectedLog._combinedResponse
                             break
                         case 1:
-                            log.response_body = log._parsedResponse
+                            this.selectedLog.response_body = this.selectedLog._parsedResponse
                             break
                         default:
-                            log.response_body = log._rawResponse
-                            log._responseMode = 0
+                            this.selectedLog.response_body = this.selectedLog._rawResponse
+                            this.selectedLog._responseMode = 0
                     }
 
                     this.$nextTick(() => {
