@@ -178,6 +178,7 @@ func (s *ProxyServer) getModels(ctx context.Context, providerConfig ProviderConf
 		for _, model := range *providerConfig.Models {
 			m := map[string]interface{}{
 				"id": model,
+				"name": model,
 			}
 			data = append(data, m)
 		}
