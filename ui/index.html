@@ -791,7 +791,6 @@
             },
             mounted() {
                 document.addEventListener('keydown', this.escKeyListener)
-                document.addEventListener('keydown', this.spaceKeyListener)
                 window.addEventListener('popstate', this.popStateListener)
 
                 this.initSSE()
@@ -799,7 +798,6 @@
             },
             beforeUnmount() {
                 document.removeEventListener('keydown', this.escKeyListener)
-                document.removeEventListener('keydown', this.spaceKeyListener)
                 window.removeEventListener('popstate', this.popStateListener)
 
                 if (this.sse) {
