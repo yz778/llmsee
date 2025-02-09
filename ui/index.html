@@ -397,7 +397,7 @@
                                 <div>Response Body</div>
                                 <div v-if="selectedLog.response_body">
                                     <div class="button-container">
-                                        <template v-if="this.selectedLog._responseBodyHasChunks">
+                                        <template v-if="selectedLog._responseBodyHasChunks">
                                             <button @click="toggleResponseBody" class="copy-btn" v-html="isRenderingBody ? '...' : svgCode"></button>
                                         </template>
                                         <button @click="copyToClipboard" v-html="svgCopy"></button>
