@@ -11,9 +11,22 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" integrity="sha512-tN7Ec6zAFaVSG3TpNAKtk4DOHNpSwKHxxrsiw4GHKESGPs5njn/0sMCUMl2svV4wo4BK/rCP7juYz+zx+l6oeQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css" integrity="sha512-EZLkOqwILORob+p0BXZc+Vm3RgJBOe1Iq/0fiI7r/wJgzOFZMlsqTa29UEl6v6U6gsV4uIpsNZoV32YZqrCRCQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
         }
 
         .container {
@@ -135,6 +148,10 @@
 
         span.status-5xx {
             background-color: #dc3545;
+        }
+
+        .modal-content .log-container span.status {
+            margin-right: 5px;
         }
 
         #table-container {
@@ -288,6 +305,87 @@
                 transform: translate(-50%, -50%) translateY(-10px);
             }
         }
+
+        .modal-model-flex-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        .modal-model-left {
+            flex: 1;
+            padding-right: 10px;
+            margin-right: 10px;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .modal-model-list {
+            height: calc(100% - 50px);
+            overflow-y: auto;
+        }
+
+        .modal-model-filter-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .modal-model-right {
+            flex: 2;
+            padding-left: 10px;
+            overflow-y: auto;
+        }
+
+        .modal-model-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+
+        .modal-model-item.modal-model-selected {
+            background-color: #f0f0f0;
+        }
+
+        .modal-model-number {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .modal-model-id {
+            font-size: 14px;
+            color: #555;
+        }
+
+        .modal-model-right .modal-model-id {
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 10px;
+            background-color: #33C3F0;
+            padding: 8px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        /* Model Details in Right Section */
+        .modal-model-details .modal-model-attribute {
+            margin-bottom: 10px;
+        }
+
+        .modal-model-details .modal-model-key {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -302,6 +400,7 @@
                     <button @click="fetchLogs(Math.min(currentPage + 1, totalPages))" :disabled="currentPage === totalPages" class="button button-primary">&gt;</button>
                     <button @click="fetchLogs(-1)" :disabled="currentPage === totalPages" class="button button-primary">&gt;|</button>
                     <button @click="addMarker()" class="button button-primary">Marker</button>
+                    <button @click="fetchModels()" class="button button-primary">Models</button>
                 </div>
 
                 <div id="table-container">
@@ -347,20 +446,45 @@
                 </div>
             </section>
 
-            <!-- Modal -->
+            <!-- Models modal-->
+            <div v-if="models" class="modal modal-model" @click.self="closeModal">
+                <div class="modal-content">
+                    <div class="modal-model-flex-container">
+                        <div class="modal-model-left">
+                            <div class="modal-model-filter">
+                                <input type="text" v-model="modelFilter" placeholder="Model filter..." class="modal-model-filter-input" />
+                            </div>
+
+                            <div class="modal-model-list">
+                                <div v-for="(model, index) in filteredModels" :key="index" class="modal-model-item" :class="{ 'modal-model-selected': selectedModel === model }" @click="selectedModel = model">
+                                    <div class="modal-model-number">{{ index + 1 }}</div>
+                                    <div class="modal-model-id" v-html="highlightMatch(model.id, modelFilter)"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-model-right">
+                            <div v-if="selectedModel" class="modal-model-details">
+                                <div class="modal-model-id">{{ selectedModel.id }}</div>
+                                <div v-for="k in Object.keys(selectedModel).filter(k => k !== 'id')" :key="k" class="modal-model-attribute">
+                                    <span class="modal-model-key">{{ k }}:</span>
+                                    <span class="modal-model-value">{{ selectedModel[k] }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Log Modal -->
             <div v-if="selectedLog" class="modal" @click.self="closeModal">
                 <div class="modal-content">
-                    <div v-if="loadingDetail" class="loading-container">
-                        <div class="loading-spinner"></div>
-                    </div>
-                    <div v-else class="log-container">
-                        <div v-if="selectedLog">
+                    <div class="log-container">
+                        <p>
                             <span :class="['status', 'status-' + String(selectedLog.response_status)[0] + 'xx']">
                                 {{ selectedLog.response_status }}
                             </span>
                             <span>{{ selectedLog.target_url }}</span>
-                            <p></p>
-                        </div>
+                        </p>
 
                         <div class="log-content">
                             <div class="log-section">
@@ -422,17 +546,40 @@
                     currentPage: 1,
                     totalPages: 1,
                     loading: true,
-                    loadingDetail: false,
                     isRenderingBody: false,
                     sse: null,
                     sseRetries: 0,
+                    models: null,
+                    modelFilter: '',
+                    selectedModel: null,
                     selectedLog: null,
                     clientID: "",
                     svgCode: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16l-4-4 4-4M16 8l4 4-4 4M13 6l-3 12" /></svg>',
                     svgCopy: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>',
                 }
             },
+            computed: {
+                filteredModels() {
+                    if (!this.modelFilter) {
+                        return this.models.data
+                    }
+                    const searchText = this.modelFilter.toLowerCase()
+                    return this.models.data.filter(model =>
+                        model.id.toLowerCase().includes(searchText)
+                    )
+                }
+            },
+            watch: {
+                filteredModels(newFilteredModels) {
+                    if (newFilteredModels.length > 0) {
+                        this.selectedModel = newFilteredModels[0];
+                    }
+                }
+            },
             methods: {
+                showingModal() {
+                    return this.models || this.selectedLog
+                },
                 async fetchLogs(page) {
                     this.loading = true
                     try {
@@ -448,11 +595,10 @@
                     }
                 },
                 async fetchLogDetail(id) {
-                    this.loadingDetail = true
                     try {
                         const response = await fetch('/log/detail?id=' + id)
                         const data = await response.json()
-                        history.pushState({ logId: id }, '', `#${id}`)
+                        history.pushState({ showmodal: true }, '', `#${id}`)
                         this.selectedLog = data
                         this.selectedLog._responseBodyHasChunks = this.selectedLog.response_body.indexOf("data:") !== -1
 
@@ -498,9 +644,16 @@
 
                     } catch (error) {
                         console.error('Error fetching log detail:', error)
-
-                    } finally {
-                        this.loadingDetail = false
+                    }
+                },
+                async fetchModels() {
+                    try {
+                        const response = await fetch('/v1/models')
+                        const data = await response.json()
+                        this.models = data || []
+                        history.pushState({ showmodal: true }, '', `#models`)
+                    } catch (error) {
+                        console.error('Error fetching models:', error)
                     }
                 },
                 initSSE() {
@@ -539,8 +692,9 @@
                     }
                 },
                 closeModal() {
-                    this.selectedLog = null
-                    if (history.state && history.state.logId) {
+                    if (this.showingModal()) {
+                        this.models = null
+                        this.selectedLog = null
                         history.back()
                     }
                 },
@@ -616,23 +770,24 @@
                             console.log('Copied to clipboard');
                         })
                         .catch(err => console.error('Error copying text: ', err));
-                }, escKeyListener(e) {
-                    if (e.key === 'Escape' && this.selectedLog !== null) {
+                },
+                escKeyListener(e) {
+                    if (e.key === 'Escape' && this.showingModal()) {
                         e.preventDefault()
                         this.closeModal()
-                    }
-                },
-                spaceKeyListener(e) {
-                    if (e.key === ' ' && this.selectedLog == null) {
-                        e.preventDefault()
-                        this.addMarker()
                     }
                 },
                 popStateListener(e) {
-                    if (!e.state || !e.state.logId) {
+                    if (this.showingModal()) {
                         this.closeModal()
                     }
                 },
+                highlightMatch(text, filter) {
+                    if (!filter) return text
+
+                    const regex = new RegExp(`(${filter})`, 'gi')
+                    return text.replace(regex, '<span class="highlight">$1</span>')
+                }
             },
             mounted() {
                 document.addEventListener('keydown', this.escKeyListener)
