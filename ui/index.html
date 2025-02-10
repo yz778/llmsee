@@ -560,6 +560,9 @@
             },
             computed: {
                 filteredModels() {
+                    if (!this.models?.data) {
+                        return []
+                    }
                     if (!this.modelFilter) {
                         return this.models.data
                     }
