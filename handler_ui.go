@@ -48,6 +48,11 @@ func (s *ProxyServer) handleUI(w http.ResponseWriter, r *http.Request) {
 		s.serveFile(w, r, "ui/index.html", "")
 		return
 	}
+
+	if r.URL.Path == "/ui/styles.css" {
+		s.serveFile(w, r, "ui/styles.css", "")
+		return
+	}
 }
 
 // serve favicon.ico
