@@ -322,7 +322,6 @@
                     if (this.showingModal()) {
                         this.models = null
                         this.selectedLog = null
-                        history.back()
                     }
                 },
                 addMarker() {
@@ -375,7 +374,7 @@
                         setTimeout(() => { this.isRenderingBody = false }, 100)
                     })
                 },
-                showPopup(anchorElement, message, duration = 1000) {
+                showTip(anchorElement, message, duration = 1000) {
                     const popup = document.createElement('div');
                     popup.className = 'popup';
                     popup.textContent = message;
@@ -393,7 +392,7 @@
 
                     navigator.clipboard.writeText(textToCopy)
                         .then(() => {
-                            this.showPopup(e.target, 'Copied!');
+                            this.showTip(e.target, 'Copied!');
                             console.log('Copied to clipboard');
                         })
                         .catch(err => console.error('Error copying text: ', err));
@@ -406,6 +405,8 @@
                 },
                 popStateListener(e) {
                     if (this.showingModal()) {
+                        debugger
+                        e.preventDefault()
                         this.closeModal()
                     }
                 },
