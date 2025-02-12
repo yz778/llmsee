@@ -290,22 +290,25 @@
                         this.sseRetries = 0
                         const data = JSON.parse(e.data)
                         switch (data?.eventType) {
-                            case "init":
+                            case "init": {
                                 this.clientID = data.clientID
                                 break
+                            }
 
-                            case "insert":
+                            case "insert": {
                                 data.entry._flash = true
                                 this.logs.unshift(data.entry)
                                 break
+                            }
 
-                            case "update":
+                            case "update": {
                                 const index = this.logs.findIndex(log => log.id === data.entry.id)
                                 if (index !== -1) {
                                     data.entry._flash = true
                                     this.logs[index] = data.entry
                                 }
                                 break
+                            }
                         }
                     }
 
@@ -358,15 +361,18 @@
                     this.isRenderingBody = true
 
                     switch (++this.selectedLog._responseMode) {
-                        case 2:
+                        case 2: {
                             this.selectedLog.response_body = this.selectedLog._combinedResponse
                             break
-                        case 1:
+                        }
+                        case 1: {
                             this.selectedLog.response_body = this.selectedLog._parsedResponse
                             break
-                        default:
+                        }
+                        default: {
                             this.selectedLog.response_body = this.selectedLog._rawResponse
                             this.selectedLog._responseMode = 0
+                        }
                     }
 
                     this.$nextTick(() => {
