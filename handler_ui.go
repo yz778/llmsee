@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"embed"
 	"io"
+	"log"
 	"net/http"
+	"path/filepath"
+	"strings"
 )
 
 //go:embed ui/*
@@ -13,6 +16,7 @@ var uiFS embed.FS
 // serveFile from filesystem in devmode or from embedded fs in prod mode
 func (s *ProxyServer) serveFile(w http.ResponseWriter, r *http.Request, filePath string, contentType string) {
 	if s.devMode {
+		log.Print(filePath)
 		http.ServeFile(w, r, filePath)
 		return
 	}
@@ -48,6 +52,9 @@ func (s *ProxyServer) handleUI(w http.ResponseWriter, r *http.Request) {
 		s.serveFile(w, r, "ui/index.html", "")
 		return
 	}
+
+	path := filepath.Join("ui/", filepath.Clean(strings.TrimPrefix(r.URL.Path, "/ui")))
+	s.serveFile(w, r, path, "")
 }
 
 // serve favicon.ico
