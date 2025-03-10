@@ -4,7 +4,7 @@ go 1.23.5
 
 require (
 	github.com/andybalholm/brotli v1.1.1
-	github.com/golang/snappy v0.0.4
+	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.0
 	modernc.org/sqlite v1.36.0
