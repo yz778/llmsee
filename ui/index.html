@@ -252,9 +252,6 @@
                         model.id.toLowerCase().includes(searchText)
                     )
                 },
-                visibleLogs() {
-                    return this.logs.filter(log => !log._marker)
-                },
                 logsWithMarkers() {
                     const result = []
                     for (const log of this.logs) {
