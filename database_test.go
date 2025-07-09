@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -255,8 +256,8 @@ func TestGetLogDetail_NotFound(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when getting non-existent log detail")
 	}
-	if err != sql.ErrNoRows {
-		t.Errorf("expected sql.ErrNoRows, got %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 

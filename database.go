@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 )
+
+// ErrNotFound indicates that the requested resource was not found
+var ErrNotFound = errors.New("resource not found")
 
 type LogEntry struct {
 	Id               int64  `json:"id"`
@@ -256,6 +260,9 @@ func (s *ProxyServer) getLogDetail(id int64) (LogEntry, error) {
 		&entry.DurationMs,
 	)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return LogEntry{}, ErrNotFound
+		}
 		return LogEntry{}, err
 	}
 

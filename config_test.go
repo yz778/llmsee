@@ -75,13 +75,13 @@ func TestNewModelStructure(t *testing.T) {
 			}
 
 			provider := config.Providers["test"]
-			
+
 			if tt.expectedModels != nil {
 				if provider.Models == nil {
 					t.Error("expected models to be set")
 					return
 				}
-				
+
 				models := *provider.Models
 				if !reflect.DeepEqual(models, tt.expectedModels) {
 					t.Errorf("Models = %v, want %v", models, tt.expectedModels)
@@ -230,7 +230,7 @@ func TestConfigParsing(t *testing.T) {
 			// Create temporary config file
 			tmpDir := t.TempDir()
 			configFile := filepath.Join(tmpDir, "test_config.json")
-			
+
 			err := os.WriteFile(configFile, []byte(tt.configJSON), 0644)
 			if err != nil {
 				t.Fatalf("failed to write test config file: %v", err)
@@ -266,23 +266,20 @@ func TestDefaultConfig(t *testing.T) {
 	oldConfigFile := os.Getenv("LLMSEE_CONFIGFILE")
 	oldHost := os.Getenv("LLMSEE_HOST")
 	oldPort := os.Getenv("LLMSEE_PORT")
-	
+
 	// Set to a non-existent path to ensure no config file is found
 	tempDir := t.TempDir()
 	nonExistentPath := filepath.Join(tempDir, "nonexistent.json")
-	
+
 	os.Setenv("LLMSEE_CONFIGFILE", nonExistentPath)
 	os.Setenv("LLMSEE_HOST", "")
 	os.Setenv("LLMSEE_PORT", "")
-	
+
 	defer func() {
 		os.Setenv("LLMSEE_CONFIGFILE", oldConfigFile)
 		os.Setenv("LLMSEE_HOST", oldHost)
 		os.Setenv("LLMSEE_PORT", oldPort)
 	}()
-
-	// Reset CLI args for test
-	cliArgs = CLIArgs{}
 
 	config, err := getConfig()
 	if err != nil {
@@ -355,7 +352,7 @@ func TestCLIPortOverride(t *testing.T) {
 			// Create temporary config file
 			tmpDir := t.TempDir()
 			configFile := filepath.Join(tmpDir, "test_config.json")
-			
+
 			err := os.WriteFile(configFile, []byte(tt.configJSON), 0644)
 			if err != nil {
 				t.Fatalf("failed to write test config file: %v", err)
@@ -365,20 +362,17 @@ func TestCLIPortOverride(t *testing.T) {
 			oldConfigFile := os.Getenv("LLMSEE_CONFIGFILE")
 			oldHost := os.Getenv("LLMSEE_HOST")
 			oldPort := os.Getenv("LLMSEE_PORT")
-			
+
 			os.Unsetenv("LLMSEE_CONFIGFILE")
 			os.Unsetenv("LLMSEE_HOST")
 			os.Unsetenv("LLMSEE_PORT")
-			
+
 			defer func() {
 				os.Setenv("LLMSEE_CONFIGFILE", oldConfigFile)
 				os.Setenv("LLMSEE_HOST", oldHost)
 				os.Setenv("LLMSEE_PORT", oldPort)
 			}()
 
-			// Reset CLI args for test
-			cliArgs = CLIArgs{}
-			
 			// Simulate CLI arguments
 			args := append([]string{"-c", configFile}, tt.cliArgs...)
 			os.Args = append([]string{"llmsee"}, args...)
@@ -438,9 +432,6 @@ func TestParseCLIArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset CLI args for test
-			cliArgs = CLIArgs{}
-			
 			// Set up CLI arguments
 			os.Args = append([]string{"llmsee"}, tt.args...)
 

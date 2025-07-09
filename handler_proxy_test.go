@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/andybalholm/brotli"
+	"github.com/golang/snappy"
+	"github.com/klauspost/compress/zstd"
 )
 
 func TestParseProvider(t *testing.T) {
@@ -474,6 +476,33 @@ func TestDecompressBody(t *testing.T) {
 				return nil, err
 			}
 			return buf.Bytes(), nil
+		case "zstd":
+			var buf bytes.Buffer
+			w, err := zstd.NewWriter(&buf)
+			if err != nil {
+				return nil, err
+			}
+			_, err = w.Write([]byte(data))
+			if err != nil {
+				return nil, err
+			}
+			err = w.Close()
+			if err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
+		case "snappy":
+			var buf bytes.Buffer
+			w := snappy.NewBufferedWriter(&buf)
+			_, err := w.Write([]byte(data))
+			if err != nil {
+				return nil, err
+			}
+			err = w.Close()
+			if err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
 		default:
 			return []byte(data), nil
 		}
@@ -502,6 +531,16 @@ func TestDecompressBody(t *testing.T) {
 		{
 			name:     "brotli encoding",
 			encoding: "br",
+			wantErr:  false,
+		},
+		{
+			name:     "zstd encoding",
+			encoding: "zstd",
+			wantErr:  false,
+		},
+		{
+			name:     "snappy encoding",
+			encoding: "snappy",
 			wantErr:  false,
 		},
 		{

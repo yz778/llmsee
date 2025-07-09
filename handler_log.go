@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strconv"
@@ -54,6 +55,10 @@ func (s *ProxyServer) handleLogDetail(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := s.getLogDetail(int64(id))
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			http.Error(w, `{"error":"Log entry not found"}`, http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

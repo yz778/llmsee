@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -93,14 +92,10 @@ type CLIArgs struct {
 	Port       int
 }
 
-var (
-	cliArgs     CLIArgs
-	cliOnce     sync.Once
-	flagsParsed bool
-)
-
 // parseCLIArgs parses command line arguments
 func parseCLIArgs() CLIArgs {
+	var cliArgs CLIArgs
+	
 	// Use a separate flag set to avoid conflicts with test flags
 	fs := flag.NewFlagSet("llmsee", flag.ContinueOnError)
 	fs.StringVar(&cliArgs.ConfigFile, "c", "", "Path to JSON configuration file")
