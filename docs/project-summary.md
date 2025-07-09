@@ -70,22 +70,21 @@ LLMSee is a cross-platform lightweight proxy for logging OpenAI-compatible API c
 
 ## Enhanced Model Configuration
 
-### Traditional Approach
+### Basic Model Configuration
 ```json
 "models": ["gpt-4", "gpt-3.5-turbo"]
 ```
 
-### Enhanced Approach
+### Models with Parameters
 ```json
-"models": [
-  "gpt-4",
-  {
-    "name": "gpt-4-thinking",
+"models": ["gpt-4", "gpt-4-thinking"],
+"modelparams": {
+  "gpt-4-thinking": {
     "think": true,
     "temperature": 0.7,
     "max_tokens": 2000
   }
-]
+}
 ```
 
 ### Automatic Parameter Injection

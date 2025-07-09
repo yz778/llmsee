@@ -2,12 +2,17 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"github.com/andybalholm/brotli"
 )
 
 func TestParseProvider(t *testing.T) {
@@ -134,10 +139,7 @@ func TestGetModels_CustomModels(t *testing.T) {
 		{
 			name: "simple string models",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{Name: "model1", Parameters: map[string]interface{}{}},
-					{Name: "model2", Parameters: map[string]interface{}{}},
-				},
+				Models: &[]string{"model1", "model2"},
 			},
 			expectedModels: []map[string]interface{}{
 				{"id": "model1"},
@@ -147,15 +149,10 @@ func TestGetModels_CustomModels(t *testing.T) {
 		{
 			name: "models with parameters",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{
-						Name:       "thinking-model",
-						Parameters: map[string]interface{}{"think": true, "temperature": 0.7},
-					},
-					{
-						Name:       "creative-model",
-						Parameters: map[string]interface{}{"think": false, "temperature": 1.2, "top_p": 0.9},
-					},
+				Models: &[]string{"thinking-model", "creative-model"},
+				ModelParams: map[string]map[string]interface{}{
+					"thinking-model": {"think": true, "temperature": 0.7},
+					"creative-model": {"think": false, "temperature": 1.2, "top_p": 0.9},
 				},
 			},
 			expectedModels: []map[string]interface{}{
@@ -166,12 +163,9 @@ func TestGetModels_CustomModels(t *testing.T) {
 		{
 			name: "mixed models",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{Name: "simple-model", Parameters: map[string]interface{}{}},
-					{
-						Name:       "enhanced-model",
-						Parameters: map[string]interface{}{"think": true},
-					},
+				Models: &[]string{"simple-model", "enhanced-model"},
+				ModelParams: map[string]map[string]interface{}{
+					"enhanced-model": {"think": true},
 				},
 			},
 			expectedModels: []map[string]interface{}{
@@ -214,21 +208,16 @@ func TestWriteModels(t *testing.T) {
 		{
 			name: "simple models",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{Name: "model1", Parameters: map[string]interface{}{}},
-					{Name: "model2", Parameters: map[string]interface{}{}},
-				},
+				Models: &[]string{"model1", "model2"},
 			},
 			expectedJSON: `{"object":"list","data":[{"id":"model1"},{"id":"model2"}]}`,
 		},
 		{
 			name: "models with parameters",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{
-						Name:       "thinking-model",
-						Parameters: map[string]interface{}{"think": true, "temperature": 0.7},
-					},
+				Models: &[]string{"thinking-model"},
+				ModelParams: map[string]map[string]interface{}{
+					"thinking-model": {"think": true, "temperature": 0.7},
 				},
 			},
 			expectedJSON: `{"object":"list","data":[{"id":"thinking-model","temperature":0.7,"think":true}]}`,
@@ -288,8 +277,9 @@ func TestModelParameterApplication(t *testing.T) {
 			name:  "model not in custom list",
 			model: "gpt-4",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{Name: "other-model", Parameters: map[string]interface{}{"think": true}},
+				Models: &[]string{"other-model"},
+				ModelParams: map[string]map[string]interface{}{
+					"other-model": {"think": true},
 				},
 			},
 			requestBody: map[string]interface{}{
@@ -305,13 +295,11 @@ func TestModelParameterApplication(t *testing.T) {
 			name:  "apply model parameters",
 			model: "thinking-model",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{
-						Name: "thinking-model",
-						Parameters: map[string]interface{}{
-							"think":       true,
-							"temperature": 0.7,
-						},
+				Models: &[]string{"thinking-model"},
+				ModelParams: map[string]map[string]interface{}{
+					"thinking-model": {
+						"think":       true,
+						"temperature": 0.7,
 					},
 				},
 			},
@@ -330,12 +318,10 @@ func TestModelParameterApplication(t *testing.T) {
 			name:  "override existing parameters",
 			model: "thinking-model",
 			providerConfig: ProviderConfig{
-				Models: &[]ModelConfig{
-					{
-						Name: "thinking-model",
-						Parameters: map[string]interface{}{
-							"temperature": 0.7,
-						},
+				Models: &[]string{"thinking-model"},
+				ModelParams: map[string]map[string]interface{}{
+					"thinking-model": {
+						"temperature": 0.7,
 					},
 				},
 			},
@@ -361,12 +347,15 @@ func TestModelParameterApplication(t *testing.T) {
 			}
 
 			// Apply model-specific parameters if configured
-			if tt.providerConfig.Models != nil {
-				for _, modelConfig := range *tt.providerConfig.Models {
-					if modelConfig.Name == tt.model {
-						// Apply model parameters to the request body
-						for k, v := range modelConfig.Parameters {
-							bodyJSON[k] = v
+			if tt.providerConfig.Models != nil && tt.providerConfig.ModelParams != nil {
+				// Check if the model is in the models list and has parameters
+				for _, modelName := range *tt.providerConfig.Models {
+					if modelName == tt.model {
+						if params, exists := tt.providerConfig.ModelParams[tt.model]; exists {
+							// Apply model parameters to the request body
+							for k, v := range params {
+								bodyJSON[k] = v
+							}
 						}
 						break
 					}
@@ -446,6 +435,50 @@ func TestHandleCORS(t *testing.T) {
 func TestDecompressBody(t *testing.T) {
 	testData := "Hello, World!"
 	
+	// Helper function to compress data with different encodings
+	compressData := func(data string, encoding string) ([]byte, error) {
+		switch encoding {
+		case "gzip":
+			var buf bytes.Buffer
+			w := gzip.NewWriter(&buf)
+			_, err := w.Write([]byte(data))
+			if err != nil {
+				return nil, err
+			}
+			err = w.Close()
+			if err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
+		case "deflate":
+			var buf bytes.Buffer
+			w := zlib.NewWriter(&buf)
+			_, err := w.Write([]byte(data))
+			if err != nil {
+				return nil, err
+			}
+			err = w.Close()
+			if err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
+		case "br":
+			var buf bytes.Buffer
+			w := brotli.NewWriter(&buf)
+			_, err := w.Write([]byte(data))
+			if err != nil {
+				return nil, err
+			}
+			err = w.Close()
+			if err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
+		default:
+			return []byte(data), nil
+		}
+	}
+	
 	tests := []struct {
 		name     string
 		encoding string
@@ -480,7 +513,13 @@ func TestDecompressBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reader := bytes.NewReader([]byte(testData))
+			// Compress the test data appropriately for the encoding
+			compressedData, err := compressData(testData, tt.encoding)
+			if err != nil {
+				t.Fatalf("failed to compress test data: %v", err)
+			}
+			
+			reader := bytes.NewReader(compressedData)
 			result, err := decompressBody(reader, tt.encoding)
 
 			if tt.wantErr && err == nil {
@@ -492,6 +531,16 @@ func TestDecompressBody(t *testing.T) {
 
 			if result == nil {
 				t.Error("expected non-nil reader")
+			}
+			
+			// For compressed encodings, verify we can read back the original data
+			if tt.encoding != "" && tt.encoding != "unknown" && result != nil {
+				decompressedData, err := io.ReadAll(result)
+				if err != nil {
+					t.Errorf("failed to read decompressed data: %v", err)
+				} else if string(decompressedData) != testData {
+					t.Errorf("decompressed data = %q, want %q", string(decompressedData), testData)
+				}
 			}
 		})
 	}

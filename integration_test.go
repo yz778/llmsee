@@ -29,10 +29,9 @@ func TestIntegration_ModelParameterApplication(t *testing.T) {
 			"test_provider": map[string]interface{}{
 				"baseUrl": "http://localhost:11434/v1",
 				"apikey":  "test-key",
-				"models": []interface{}{
-					"simple-model",
-					map[string]interface{}{
-						"name":        "thinking-model",
+				"models": []string{"simple-model", "thinking-model"},
+				"modelparams": map[string]interface{}{
+					"thinking-model": map[string]interface{}{
 						"think":       true,
 						"temperature": 0.7,
 					},
@@ -152,10 +151,9 @@ func TestIntegration_V1ModelsEndpoint(t *testing.T) {
 		"providers": map[string]interface{}{
 			"provider1": map[string]interface{}{
 				"baseUrl": "http://localhost:11434/v1",
-				"models": []interface{}{
-					"simple-model",
-					map[string]interface{}{
-						"name":        "enhanced-model",
+				"models": []string{"simple-model", "enhanced-model"},
+				"modelparams": map[string]interface{}{
+					"enhanced-model": map[string]interface{}{
 						"think":       true,
 						"temperature": 0.8,
 					},
@@ -163,9 +161,7 @@ func TestIntegration_V1ModelsEndpoint(t *testing.T) {
 			},
 			"provider2": map[string]interface{}{
 				"baseUrl": "http://localhost:11435/v1",
-				"models": []interface{}{
-					"another-model",
-				},
+				"models": []string{"another-model"},
 			},
 		},
 	}
@@ -275,10 +271,9 @@ func TestIntegration_ProviderModelsEndpoint(t *testing.T) {
 		"providers": map[string]interface{}{
 			"test_provider": map[string]interface{}{
 				"baseUrl": "http://localhost:11434/v1",
-				"models": []interface{}{
-					"model1",
-					map[string]interface{}{
-						"name":   "model2",
+				"models": []string{"model1", "model2"},
+				"modelparams": map[string]interface{}{
+					"model2": map[string]interface{}{
 						"think":  true,
 						"custom": "value",
 					},
@@ -406,11 +401,8 @@ func TestIntegration_BackwardCompatibility(t *testing.T) {
 
 	expectedNames := []string{"model1", "model2", "model3"}
 	for i, model := range models {
-		if model.Name != expectedNames[i] {
-			t.Errorf("expected model %d name to be %s, got %s", i, expectedNames[i], model.Name)
-		}
-		if len(model.Parameters) != 0 {
-			t.Errorf("expected model %d to have no parameters, got %v", i, model.Parameters)
+		if model != expectedNames[i] {
+			t.Errorf("expected model %d to be %s, got %s", i, expectedNames[i], model)
 		}
 	}
 
@@ -452,9 +444,9 @@ func TestIntegration_RequestLogging(t *testing.T) {
 		"providers": map[string]interface{}{
 			"test_provider": map[string]interface{}{
 				"baseUrl": "http://localhost:11434/v1",
-				"models": []interface{}{
-					map[string]interface{}{
-						"name":        "test-model",
+				"models": []string{"test-model"},
+				"modelparams": map[string]interface{}{
+					"test-model": map[string]interface{}{
 						"temperature": 0.5,
 					},
 				},

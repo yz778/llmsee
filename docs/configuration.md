@@ -57,50 +57,49 @@ LLMSee looks for configuration files in the following order:
       "Authorization": "X-API-Key",
       "User-Agent": "X-Client-Name"
     },
-    "models": [
-      "simple-model",
-      {
-        "name": "enhanced-model",
+    "models": ["simple-model", "enhanced-model"],
+    "modelparams": {
+      "enhanced-model": {
         "think": true,
         "temperature": 0.7,
         "max_tokens": 2000
       }
-    ]
+    }
   }
 }
 ```
 
 ## Enhanced Model Configuration
 
-LLMSee supports two model definition formats:
+LLMSee supports flexible model configuration with optional parameter injection:
 
-### Simple Format (Legacy)
+### Basic Model Configuration
 ```json
 "models": ["model1", "model2", "model3"]
 ```
 
-### Enhanced Format (Recommended)
+### Models with Parameters
+For models requiring additional parameters, use the `modelparams` field:
+
 ```json
-"models": [
-  "simple-model",
-  {
-    "name": "thinking-model",
+"models": ["simple-model", "thinking-model", "creative-model"],
+"modelparams": {
+  "thinking-model": {
     "think": true,
     "temperature": 0.7
   },
-  {
-    "name": "creative-model",
+  "creative-model": {
     "think": false,
     "temperature": 1.2,
     "top_p": 0.9,
     "max_tokens": 4000
   }
-]
+}
 ```
 
-### How Enhanced Models Work
+### How Parameter Injection Works
 
-When you make a request to an enhanced model, LLMSee automatically injects the configured parameters into your request body:
+When you make a request to a model with configured parameters, LLMSee automatically injects them into your request body:
 
 **Your Request:**
 ```json
@@ -119,6 +118,8 @@ When you make a request to an enhanced model, LLMSee automatically injects the c
   "temperature": 0.7
 }
 ```
+
+Only models listed in the `models` array that also have entries in `modelparams` will have parameters injected.
 
 ## Environment Variables
 

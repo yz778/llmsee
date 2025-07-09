@@ -175,13 +175,17 @@ func (s *ProxyServer) getModels(ctx context.Context, providerConfig ProviderConf
 	if providerConfig.Models != nil {
 		var data []map[string]interface{}
 
-		for _, modelConfig := range *providerConfig.Models {
+		for _, modelName := range *providerConfig.Models {
 			m := map[string]interface{}{
-				"id": modelConfig.Name,
+				"id": modelName,
 			}
-			// Add any additional parameters from the model config
-			for k, v := range modelConfig.Parameters {
-				m[k] = v
+			// Add any additional parameters from the model params
+			if providerConfig.ModelParams != nil {
+				if params, exists := providerConfig.ModelParams[modelName]; exists {
+					for k, v := range params {
+						m[k] = v
+					}
+				}
 			}
 			data = append(data, m)
 		}
@@ -291,13 +295,17 @@ func writeModels(w http.ResponseWriter, providerConfig ProviderConfig) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	for _, modelConfig := range *providerConfig.Models {
+	for _, modelName := range *providerConfig.Models {
 		m := map[string]interface{}{
-			"id": modelConfig.Name,
+			"id": modelName,
 		}
-		// Add any additional parameters from the model config
-		for k, v := range modelConfig.Parameters {
-			m[k] = v
+		// Add any additional parameters from the model params
+		if providerConfig.ModelParams != nil {
+			if params, exists := providerConfig.ModelParams[modelName]; exists {
+				for k, v := range params {
+					m[k] = v
+				}
+			}
 		}
 		data = append(data, m)
 	}
@@ -427,12 +435,15 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// apply model-specific parameters if configured
-	if providerConfig.Models != nil {
-		for _, modelConfig := range *providerConfig.Models {
-			if modelConfig.Name == model {
-				// Apply model parameters to the request body
-				for k, v := range modelConfig.Parameters {
-					bodyJSON[k] = v
+	if providerConfig.Models != nil && providerConfig.ModelParams != nil {
+		// Check if the model is in the models list and has parameters
+		for _, modelName := range *providerConfig.Models {
+			if modelName == model {
+				if params, exists := providerConfig.ModelParams[model]; exists {
+					// Apply model parameters to the request body
+					for k, v := range params {
+						bodyJSON[k] = v
+					}
 				}
 				break
 			}
