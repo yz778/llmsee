@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 )
+
+// ErrNotFound indicates that the requested resource was not found
+var ErrNotFound = errors.New("resource not found")
 
 type LogEntry struct {
 	Id               int64  `json:"id"`
@@ -154,4 +158,117 @@ func (s *ProxyServer) updateLogRequest(entry LogEntry) error {
 	log.Printf("[ID:%d] %s (%d) %d bytes received in %dms", entry.Id, entry.Provider, entry.ResponseStatus, entry.ResponseBodySize, entry.DurationMs)
 	s.sendSSEUpdate(ServerUpdate{EventType: "update", Entry: entry})
 	return nil
+}
+
+// getLogEntries retrieves paginated log entries from the database
+func (s *ProxyServer) getLogEntries(page, pageSize int) ([]LogEntry, int, error) {
+	// Get total count
+	var totalCount int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM logs").Scan(&totalCount)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Calculate offset
+	offset := (page - 1) * pageSize
+
+	// Query logs with pagination
+	rows, err := s.db.Query(`
+		SELECT
+			id,
+			timestamp,
+			provider,
+			method,
+			model,
+			target_url,
+			'' AS request_body,
+			LENGTH(request_body) AS request_body_size,
+			'' AS response_body,
+			LENGTH(response_body) AS response_body_size,
+			response_status,
+			useragent,
+			duration_ms
+		FROM logs
+		ORDER BY timestamp DESC
+		LIMIT ? OFFSET ?
+	`, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var logs []LogEntry
+	for rows.Next() {
+		var entry LogEntry
+		err := rows.Scan(
+			&entry.Id,
+			&entry.Timestamp,
+			&entry.Provider,
+			&entry.Method,
+			&entry.Model,
+			&entry.TargetURL,
+			&entry.RequestBody,
+			&entry.RequestBodySize,
+			&entry.ResponseBody,
+			&entry.ResponseBodySize,
+			&entry.ResponseStatus,
+			&entry.UserAgent,
+			&entry.DurationMs,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		logs = append(logs, entry)
+	}
+
+	return logs, totalCount, nil
+}
+
+// getLogDetail retrieves a single log entry with full details by ID
+func (s *ProxyServer) getLogDetail(id int64) (LogEntry, error) {
+	var entry LogEntry
+	err := s.db.QueryRow(`
+		SELECT
+			id,
+			timestamp,
+			provider,
+			method,
+			model,
+			target_url,
+			request_headers,
+			request_body,
+			LENGTH(request_body) AS request_body_size,
+			response_status,
+			response_headers,
+			response_body,
+			LENGTH(response_body) AS response_body_size,
+			useragent,
+			duration_ms
+		FROM logs
+		WHERE id = ?
+	`, id).Scan(
+		&entry.Id,
+		&entry.Timestamp,
+		&entry.Provider,
+		&entry.Method,
+		&entry.Model,
+		&entry.TargetURL,
+		&entry.RequestHeaders,
+		&entry.RequestBody,
+		&entry.RequestBodySize,
+		&entry.ResponseStatus,
+		&entry.ResponseHeaders,
+		&entry.ResponseBody,
+		&entry.ResponseBodySize,
+		&entry.UserAgent,
+		&entry.DurationMs,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return LogEntry{}, ErrNotFound
+		}
+		return LogEntry{}, err
+	}
+
+	return entry, nil
 }

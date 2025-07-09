@@ -68,7 +68,8 @@ type ProviderConfig struct {
     BaseURL       string            `json:"baseurl"`
     ApiKey        string            `json:"apikey"`
     HeaderMapping map[string]string `json:"headermapping"`
-    Models        *[]ModelConfig    `json:"models"`
+    Models        *[]string                         `json:"models"`
+    ModelParams   map[string]map[string]interface{} `json:"modelparams"`
     Enabled       *bool             `json:"enabled"`
     IsGemini      bool              `json:"-"`
 }

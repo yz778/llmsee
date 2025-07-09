@@ -8,141 +8,89 @@ import (
 	"testing"
 )
 
-func TestModelConfig_UnmarshalJSON(t *testing.T) {
+// TestNewModelStructure tests the new model configuration structure
+func TestNewModelStructure(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected ModelConfig
-		wantErr  bool
+		name           string
+		configJSON     string
+		expectedModels []string
+		expectedParams map[string]map[string]interface{}
 	}{
 		{
-			name:  "simple string model",
-			input: `"gpt-4"`,
-			expected: ModelConfig{
-				Name:       "gpt-4",
-				Parameters: map[string]interface{}{},
-			},
-			wantErr: false,
+			name: "simple models without parameters",
+			configJSON: `{
+				"providers": {
+					"test": {
+						"baseurl": "http://test.com",
+						"models": ["model1", "model2"]
+					}
+				}
+			}`,
+			expectedModels: []string{"model1", "model2"},
+			expectedParams: nil,
 		},
 		{
-			name:  "object model with parameters",
-			input: `{"name": "thinking-model", "think": true, "temperature": 0.7}`,
-			expected: ModelConfig{
-				Name: "thinking-model",
-				Parameters: map[string]interface{}{
+			name: "models with parameters",
+			configJSON: `{
+				"providers": {
+					"test": {
+						"baseurl": "http://test.com",
+						"models": ["thinking-model", "creative-model"],
+						"modelparams": {
+							"thinking-model": {
+								"think": true,
+								"temperature": 0.7
+							},
+							"creative-model": {
+								"think": false,
+								"temperature": 1.2,
+								"top_p": 0.9
+							}
+						}
+					}
+				}
+			}`,
+			expectedModels: []string{"thinking-model", "creative-model"},
+			expectedParams: map[string]map[string]interface{}{
+				"thinking-model": {
 					"think":       true,
 					"temperature": 0.7,
 				},
-			},
-			wantErr: false,
-		},
-		{
-			name:  "object model with multiple parameters",
-			input: `{"name": "creative-model", "think": false, "temperature": 1.2, "top_p": 0.9, "max_tokens": 1000}`,
-			expected: ModelConfig{
-				Name: "creative-model",
-				Parameters: map[string]interface{}{
+				"creative-model": {
 					"think":       false,
 					"temperature": 1.2,
 					"top_p":       0.9,
-					"max_tokens":  float64(1000), // JSON numbers are float64
 				},
 			},
-			wantErr: false,
-		},
-		{
-			name:    "object without name field",
-			input:   `{"think": true, "temperature": 0.7}`,
-			wantErr: true,
-		},
-		{
-			name:    "invalid JSON",
-			input:   `{invalid json}`,
-			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var mc ModelConfig
-			err := json.Unmarshal([]byte(tt.input), &mc)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error but got none")
-				}
-				return
-			}
-
+			var config Config
+			err := json.Unmarshal([]byte(tt.configJSON), &config)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 				return
 			}
 
-			if mc.Name != tt.expected.Name {
-				t.Errorf("Name = %v, want %v", mc.Name, tt.expected.Name)
-			}
+			provider := config.Providers["test"]
 
-			if !reflect.DeepEqual(mc.Parameters, tt.expected.Parameters) {
-				t.Errorf("Parameters = %v, want %v", mc.Parameters, tt.expected.Parameters)
-			}
-		})
-	}
-}
-
-func TestModelConfig_MarshalJSON(t *testing.T) {
-	tests := []struct {
-		name     string
-		model    ModelConfig
-		expected string
-	}{
-		{
-			name: "simple model without parameters",
-			model: ModelConfig{
-				Name:       "gpt-4",
-				Parameters: map[string]interface{}{},
-			},
-			expected: `"gpt-4"`,
-		},
-		{
-			name: "model with parameters",
-			model: ModelConfig{
-				Name: "thinking-model",
-				Parameters: map[string]interface{}{
-					"think":       true,
-					"temperature": 0.7,
-				},
-			},
-			expected: `{"name":"thinking-model","temperature":0.7,"think":true}`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			data, err := json.Marshal(tt.model)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			// For objects, we need to unmarshal and compare since JSON key order isn't guaranteed
-			if tt.model.Parameters != nil && len(tt.model.Parameters) > 0 {
-				var expected, actual map[string]interface{}
-				if err := json.Unmarshal([]byte(tt.expected), &expected); err != nil {
-					t.Errorf("failed to unmarshal expected JSON: %v", err)
+			if tt.expectedModels != nil {
+				if provider.Models == nil {
+					t.Error("expected models to be set")
 					return
 				}
-				if err := json.Unmarshal(data, &actual); err != nil {
-					t.Errorf("failed to unmarshal actual JSON: %v", err)
-					return
+
+				models := *provider.Models
+				if !reflect.DeepEqual(models, tt.expectedModels) {
+					t.Errorf("Models = %v, want %v", models, tt.expectedModels)
 				}
-				if !reflect.DeepEqual(actual, expected) {
-					t.Errorf("got %s, want %s", string(data), tt.expected)
-				}
-			} else {
-				// For simple strings, direct comparison is fine
-				if string(data) != tt.expected {
-					t.Errorf("got %s, want %s", string(data), tt.expected)
+			}
+
+			if tt.expectedParams != nil {
+				if !reflect.DeepEqual(provider.ModelParams, tt.expectedParams) {
+					t.Errorf("ModelParams = %v, want %v", provider.ModelParams, tt.expectedParams)
 				}
 			}
 		})
@@ -198,14 +146,13 @@ func TestConfigParsing(t *testing.T) {
 					"test_provider": {
 						"baseUrl": "http://localhost:11434/v1",
 						"apikey": "test-key",
-						"models": [
-							"simple-model",
-							{
-								"name": "thinking-model",
+						"models": ["simple-model", "thinking-model"],
+						"modelparams": {
+							"thinking-model": {
 								"think": true,
 								"temperature": 0.7
 							}
-						]
+						}
 					}
 				}
 			}`,
@@ -223,23 +170,24 @@ func TestConfigParsing(t *testing.T) {
 					return
 				}
 
-				// Check simple model
-				if models[0].Name != "simple-model" {
-					t.Errorf("expected first model name to be 'simple-model', got %s", models[0].Name)
+				// Check models are strings now
+				if models[0] != "simple-model" {
+					t.Errorf("expected first model to be 'simple-model', got %s", models[0])
 				}
-				if len(models[0].Parameters) != 0 {
-					t.Errorf("expected first model to have no parameters, got %v", models[0].Parameters)
+				if models[1] != "thinking-model" {
+					t.Errorf("expected second model to be 'thinking-model', got %s", models[1])
 				}
 
-				// Check enhanced model
-				if models[1].Name != "thinking-model" {
-					t.Errorf("expected second model name to be 'thinking-model', got %s", models[1].Name)
+				// Check model parameters are in separate ModelParams map
+				if provider.ModelParams == nil {
+					t.Error("expected ModelParams to be set")
+					return
 				}
-				if models[1].Parameters["think"] != true {
-					t.Errorf("expected think parameter to be true, got %v", models[1].Parameters["think"])
+				if provider.ModelParams["thinking-model"]["think"] != true {
+					t.Errorf("expected think parameter to be true, got %v", provider.ModelParams["thinking-model"]["think"])
 				}
-				if models[1].Parameters["temperature"] != 0.7 {
-					t.Errorf("expected temperature parameter to be 0.7, got %v", models[1].Parameters["temperature"])
+				if provider.ModelParams["thinking-model"]["temperature"] != 0.7 {
+					t.Errorf("expected temperature parameter to be 0.7, got %v", provider.ModelParams["thinking-model"]["temperature"])
 				}
 			},
 		},
@@ -269,11 +217,8 @@ func TestConfigParsing(t *testing.T) {
 
 				expectedNames := []string{"model1", "model2", "model3"}
 				for i, model := range models {
-					if model.Name != expectedNames[i] {
-						t.Errorf("expected model %d name to be %s, got %s", i, expectedNames[i], model.Name)
-					}
-					if len(model.Parameters) != 0 {
-						t.Errorf("expected model %d to have no parameters, got %v", i, model.Parameters)
+					if model != expectedNames[i] {
+						t.Errorf("expected model %d to be %s, got %s", i, expectedNames[i], model)
 					}
 				}
 			},
@@ -285,7 +230,7 @@ func TestConfigParsing(t *testing.T) {
 			// Create temporary config file
 			tmpDir := t.TempDir()
 			configFile := filepath.Join(tmpDir, "test_config.json")
-			
+
 			err := os.WriteFile(configFile, []byte(tt.configJSON), 0644)
 			if err != nil {
 				t.Fatalf("failed to write test config file: %v", err)
@@ -321,19 +266,20 @@ func TestDefaultConfig(t *testing.T) {
 	oldConfigFile := os.Getenv("LLMSEE_CONFIGFILE")
 	oldHost := os.Getenv("LLMSEE_HOST")
 	oldPort := os.Getenv("LLMSEE_PORT")
-	
-	os.Unsetenv("LLMSEE_CONFIGFILE")
-	os.Unsetenv("LLMSEE_HOST")
-	os.Unsetenv("LLMSEE_PORT")
-	
+
+	// Set to a non-existent path to ensure no config file is found
+	tempDir := t.TempDir()
+	nonExistentPath := filepath.Join(tempDir, "nonexistent.json")
+
+	os.Setenv("LLMSEE_CONFIGFILE", nonExistentPath)
+	os.Setenv("LLMSEE_HOST", "")
+	os.Setenv("LLMSEE_PORT", "")
+
 	defer func() {
 		os.Setenv("LLMSEE_CONFIGFILE", oldConfigFile)
 		os.Setenv("LLMSEE_HOST", oldHost)
 		os.Setenv("LLMSEE_PORT", oldPort)
 	}()
-
-	// Reset flag parsing for test
-	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
 	config, err := getConfig()
 	if err != nil {
@@ -406,7 +352,7 @@ func TestCLIPortOverride(t *testing.T) {
 			// Create temporary config file
 			tmpDir := t.TempDir()
 			configFile := filepath.Join(tmpDir, "test_config.json")
-			
+
 			err := os.WriteFile(configFile, []byte(tt.configJSON), 0644)
 			if err != nil {
 				t.Fatalf("failed to write test config file: %v", err)
@@ -416,20 +362,17 @@ func TestCLIPortOverride(t *testing.T) {
 			oldConfigFile := os.Getenv("LLMSEE_CONFIGFILE")
 			oldHost := os.Getenv("LLMSEE_HOST")
 			oldPort := os.Getenv("LLMSEE_PORT")
-			
+
 			os.Unsetenv("LLMSEE_CONFIGFILE")
 			os.Unsetenv("LLMSEE_HOST")
 			os.Unsetenv("LLMSEE_PORT")
-			
+
 			defer func() {
 				os.Setenv("LLMSEE_CONFIGFILE", oldConfigFile)
 				os.Setenv("LLMSEE_HOST", oldHost)
 				os.Setenv("LLMSEE_PORT", oldPort)
 			}()
 
-			// Reset flag parsing and set up CLI args
-			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-			
 			// Simulate CLI arguments
 			args := append([]string{"-c", configFile}, tt.cliArgs...)
 			os.Args = append([]string{"llmsee"}, args...)
@@ -489,9 +432,6 @@ func TestParseCLIArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset flag parsing
-			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-			
 			// Set up CLI arguments
 			os.Args = append([]string{"llmsee"}, tt.args...)
 

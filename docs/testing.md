@@ -29,8 +29,7 @@ go test -v -short ./...             # Skip long-running tests
 ### Test Categories
 
 #### 1. Configuration Tests (`config_test.go`)
-- **`TestModelConfig_UnmarshalJSON`** - String vs object model parsing
-- **`TestModelConfig_MarshalJSON`** - JSON serialization
+- **`TestNewModelStructure`** - New model configuration structure
 - **`TestProviderConfig_IsEnabled`** - Provider enable/disable logic
 - **`TestConfigParsing`** - Complete config file parsing
 - **`TestDefaultConfig`** - Default configuration behavior
@@ -70,17 +69,16 @@ go test -v -short ./...             # Skip long-running tests
 "models": ["model1", "model2"]
 ```
 
-#### Enhanced Format
+#### Models with Parameters
 ```go
-// New object format with parameters
-"models": [
-  "simple-model",
-  {
-    "name": "thinking-model",
+// New structure with separate models and modelparams
+"models": ["simple-model", "thinking-model"],
+"modelparams": {
+  "thinking-model": {
     "think": true,
     "temperature": 0.7
   }
-]
+}
 ```
 
 #### Parameter Application Verification
@@ -179,7 +177,7 @@ go test -v ./...
 
 ### Run Specific Test
 ```bash
-go test -v -run TestModelConfig_UnmarshalJSON
+go test -v -run TestNewModelStructure
 ```
 
 ### Debug Logging in Tests
