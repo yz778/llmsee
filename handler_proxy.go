@@ -170,27 +170,32 @@ func (s *ProxyServer) getGeminiModels(ctx context.Context, providerConfig Provid
 	return models, nil
 }
 
+// buildModelList constructs a list of model objects with their parameters from a ProviderConfig
+func buildModelList(providerConfig ProviderConfig) []map[string]interface{} {
+	var data []map[string]interface{}
+
+	for _, modelName := range *providerConfig.Models {
+		m := map[string]interface{}{
+			"id": modelName,
+		}
+		// Add any additional parameters from the model params
+		if providerConfig.ModelParams != nil {
+			if params, exists := providerConfig.ModelParams[modelName]; exists {
+				for k, v := range params {
+					m[k] = v
+				}
+			}
+		}
+		data = append(data, m)
+	}
+
+	return data
+}
+
 func (s *ProxyServer) getModels(ctx context.Context, providerConfig ProviderConfig) (models []map[string]interface{}, err error) {
 	// handle custom provider models
 	if providerConfig.Models != nil {
-		var data []map[string]interface{}
-
-		for _, modelName := range *providerConfig.Models {
-			m := map[string]interface{}{
-				"id": modelName,
-			}
-			// Add any additional parameters from the model params
-			if providerConfig.ModelParams != nil {
-				if params, exists := providerConfig.ModelParams[modelName]; exists {
-					for k, v := range params {
-						m[k] = v
-					}
-				}
-			}
-			data = append(data, m)
-		}
-
-		return data, nil
+		return buildModelList(providerConfig), nil
 	}
 
 	// handling for gemini models
@@ -291,24 +296,9 @@ func (s *ProxyServer) getAllModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeModels(w http.ResponseWriter, providerConfig ProviderConfig) {
-	var data []map[string]interface{}
-
 	w.Header().Set("Content-Type", "application/json")
 
-	for _, modelName := range *providerConfig.Models {
-		m := map[string]interface{}{
-			"id": modelName,
-		}
-		// Add any additional parameters from the model params
-		if providerConfig.ModelParams != nil {
-			if params, exists := providerConfig.ModelParams[modelName]; exists {
-				for k, v := range params {
-					m[k] = v
-				}
-			}
-		}
-		data = append(data, m)
-	}
+	data := buildModelList(providerConfig)
 
 	models := map[string]interface{}{
 		"object": "list",
