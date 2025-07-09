@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -41,11 +42,63 @@ type Config struct {
 	Providers    map[string]ProviderConfig `json:"providers"`
 }
 
+// ModelConfig represents a model configuration that can be either a string or an object with additional parameters
+type ModelConfig struct {
+	Name       string                 `json:"name,omitempty"`
+	Parameters map[string]interface{} `json:"-"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for ModelConfig
+// Supports both string format: "model-name" and object format: {"name": "model-name", "think": true, ...}
+func (m *ModelConfig) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		m.Name = str
+		m.Parameters = make(map[string]interface{})
+		return nil
+	}
+
+	// Try to unmarshal as object
+	var obj map[string]interface{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+
+	// Extract name field
+	if name, ok := obj["name"].(string); ok {
+		m.Name = name
+		delete(obj, "name") // Remove name from parameters
+	} else {
+		return fmt.Errorf("model object must have a 'name' field")
+	}
+
+	// Store remaining fields as parameters
+	m.Parameters = obj
+	return nil
+}
+
+// MarshalJSON implements custom JSON marshaling for ModelConfig
+func (m *ModelConfig) MarshalJSON() ([]byte, error) {
+	if len(m.Parameters) == 0 {
+		// If no parameters, marshal as simple string
+		return json.Marshal(m.Name)
+	}
+
+	// Marshal as object with name and parameters
+	obj := make(map[string]interface{})
+	obj["name"] = m.Name
+	for k, v := range m.Parameters {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
+}
+
 type ProviderConfig struct {
 	BaseURL       string            `json:"baseurl"`
 	ApiKey        string            `json:"apikey"`
 	HeaderMapping map[string]string `json:"headermapping"`
-	Models        *[]string         `json:"models"`
+	Models        *[]ModelConfig    `json:"models"`
 	Enabled       *bool             `json:"enabled"`
 	IsGemini      bool              `json:"-"`
 }
@@ -85,9 +138,29 @@ var defaultConfig = Config{
 	},
 }
 
+// CLI arguments structure
+type CLIArgs struct {
+	ConfigFile string
+	Port       int
+}
+
+// parseCLIArgs parses command line arguments
+func parseCLIArgs() CLIArgs {
+	var args CLIArgs
+	flag.StringVar(&args.ConfigFile, "c", "", "Path to JSON configuration file")
+	flag.IntVar(&args.Port, "p", 0, "Port number to override config file setting")
+	flag.Parse()
+	return args
+}
+
 func getConfig() (config *Config, err error) {
 	config = &Config{}
-	configFile := findConfigFile()
+	
+	// Parse CLI arguments first
+	cliArgs := parseCLIArgs()
+	
+	// Find and load config file
+	configFile := findConfigFile(cliArgs.ConfigFile)
 
 	if configFile != "" {
 		fileConfig, _ := os.ReadFile(configFile)
@@ -103,7 +176,11 @@ func getConfig() (config *Config, err error) {
 		config.Host = defaultConfig.Host
 	}
 
-	if config.Port == 0 {
+	// Apply CLI port override if provided, otherwise use config or default
+	if cliArgs.Port > 0 {
+		config.Port = cliArgs.Port
+		log.Printf("Port overridden by CLI argument: %d", cliArgs.Port)
+	} else if config.Port == 0 {
 		config.Port = defaultConfig.Port
 	}
 
@@ -140,17 +217,14 @@ func getConfig() (config *Config, err error) {
 	return config, err
 }
 
-func findConfigFile() string {
-	// if configfile in arguments (-c <configfile>), it must exist
-	var configFile string
-	flag.StringVar(&configFile, "c", "", "Path to JSON configuration file")
-	flag.Parse()
-	if configFile != "" {
-		return configFile
+func findConfigFile(cliConfigFile string) string {
+	// if configfile provided via CLI argument, use it
+	if cliConfigFile != "" {
+		return cliConfigFile
 	}
 
 	// check env variable
-	configFile = os.Getenv("LLMSEE_CONFIGFILE")
+	configFile := os.Getenv("LLMSEE_CONFIGFILE")
 	if configFile != "" {
 		return configFile
 	}

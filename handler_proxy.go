@@ -175,9 +175,13 @@ func (s *ProxyServer) getModels(ctx context.Context, providerConfig ProviderConf
 	if providerConfig.Models != nil {
 		var data []map[string]interface{}
 
-		for _, model := range *providerConfig.Models {
+		for _, modelConfig := range *providerConfig.Models {
 			m := map[string]interface{}{
-				"id": model,
+				"id": modelConfig.Name,
+			}
+			// Add any additional parameters from the model config
+			for k, v := range modelConfig.Parameters {
+				m[k] = v
 			}
 			data = append(data, m)
 		}
@@ -287,9 +291,13 @@ func writeModels(w http.ResponseWriter, providerConfig ProviderConfig) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	for _, model := range *providerConfig.Models {
+	for _, modelConfig := range *providerConfig.Models {
 		m := map[string]interface{}{
-			"id": model,
+			"id": modelConfig.Name,
+		}
+		// Add any additional parameters from the model config
+		for k, v := range modelConfig.Parameters {
+			m[k] = v
 		}
 		data = append(data, m)
 	}
@@ -416,6 +424,19 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" && remainingPath == "models" && providerConfig.Models != nil {
 		writeModels(w, providerConfig)
 		return
+	}
+
+	// apply model-specific parameters if configured
+	if providerConfig.Models != nil {
+		for _, modelConfig := range *providerConfig.Models {
+			if modelConfig.Name == model {
+				// Apply model parameters to the request body
+				for k, v := range modelConfig.Parameters {
+					bodyJSON[k] = v
+				}
+				break
+			}
+		}
 	}
 
 	// special handling for Gemini
