@@ -181,8 +181,8 @@ func (s *ProxyServer) getLogEntries(page, pageSize int) ([]LogEntry, int, error)
 			method,
 			model,
 			target_url,
-			length(request_body) AS request_body_size,
-			length(response_body) AS response_body_size,
+			request_body,
+			response_body,
 			response_status,
 			useragent,
 			duration_ms
@@ -205,8 +205,8 @@ func (s *ProxyServer) getLogEntries(page, pageSize int) ([]LogEntry, int, error)
 			&entry.Method,
 			&entry.Model,
 			&entry.TargetURL,
-			&entry.RequestBodySize,
-			&entry.ResponseBodySize,
+			&entry.RequestBody,
+			&entry.ResponseBody,
 			&entry.ResponseStatus,
 			&entry.UserAgent,
 			&entry.DurationMs,
@@ -214,6 +214,9 @@ func (s *ProxyServer) getLogEntries(page, pageSize int) ([]LogEntry, int, error)
 		if err != nil {
 			return nil, 0, err
 		}
+		// Calculate body sizes using Go's built-in len() function
+		entry.RequestBodySize = len(entry.RequestBody)
+		entry.ResponseBodySize = len(entry.ResponseBody)
 		logs = append(logs, entry)
 	}
 
@@ -233,11 +236,9 @@ func (s *ProxyServer) getLogDetail(id int64) (LogEntry, error) {
 			target_url,
 			request_headers,
 			request_body,
-			length(request_body) AS request_body_size,
 			response_status,
 			response_headers,
 			response_body,
-			length(response_body) AS response_body_size,
 			useragent,
 			duration_ms
 		FROM logs
@@ -251,11 +252,9 @@ func (s *ProxyServer) getLogDetail(id int64) (LogEntry, error) {
 		&entry.TargetURL,
 		&entry.RequestHeaders,
 		&entry.RequestBody,
-		&entry.RequestBodySize,
 		&entry.ResponseStatus,
 		&entry.ResponseHeaders,
 		&entry.ResponseBody,
-		&entry.ResponseBodySize,
 		&entry.UserAgent,
 		&entry.DurationMs,
 	)
@@ -265,6 +264,10 @@ func (s *ProxyServer) getLogDetail(id int64) (LogEntry, error) {
 		}
 		return LogEntry{}, err
 	}
+
+	// Calculate body sizes using Go's built-in len() function
+	entry.RequestBodySize = len(entry.RequestBody)
+	entry.ResponseBodySize = len(entry.ResponseBody)
 
 	return entry, nil
 }
