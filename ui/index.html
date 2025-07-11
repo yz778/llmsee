@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.13/vue.global.prod.min.js" integrity="sha512-66fV4MXSQdGN0KQxZ0Bw627HalhTQYQbOoF24EtMXN2FaAoKMgAZ7nDi77d9xWwrRjEEUfE+7rxjTt+cA2IuJA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" integrity="sha512-7Z9J3l1+EYfeaPKcGXu3MS/7T+w19WtKQY/n+xzmw4hZhJ9tyYmcUS+4QqAlzhicE5LAfMQSF3iFTK9bQdTxXg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js" integrity="sha512-QXFMVAusM85vUYDaNgcYeU3rzSlc+bTV4JvkfJhjxSHlQEo+ig53BtnGkvFTiNJh8D+wv6uWAQ2vJaVmxe8d3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js" integrity="sha512-6O/PZimM3TD1NN3yrazePA4AbZrPcwt1QCGJrVY7WoHDJROZFc9TlBvIKMe+QfqgcslW4lQeBzNJEJvIMC8WhA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" integrity="sha512-tN7Ec6zAFaVSG3TpNAKtk4DOHNpSwKHxxrsiw4GHKESGPs5njn/0sMCUMl2svV4wo4BK/rCP7juYz+zx+l6oeQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css" integrity="sha512-EZLkOqwILORob+p0BXZc+Vm3RgJBOe1Iq/0fiI7r/wJgzOFZMlsqTa29UEl6v6U6gsV4uIpsNZoV32YZqrCRCQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="styles.css" />
@@ -76,11 +77,11 @@
                     <div class="modal-model-flex-container">
                         <div class="modal-model-left">
                             <div class="modal-model-filter">
-                                <input type="text" v-model="modelFilter" placeholder="Model filter..." class="modal-model-filter-input" />
+                                <input type="text" v-model="modelFilter" @input="onSearchInput" placeholder="Model filter..." class="modal-model-filter-input" />
                             </div>
 
                             <div class="modal-model-list">
-                                <div v-for="(model, index) in filteredModels" :key="index" class="modal-model-item" :class="{ 'modal-model-selected': selectedModel === model }" @click="selectedModel = model">
+                                <div v-for="(model, index) in filteredModels" :key="model.id" class="modal-model-item" :class="{ 'modal-model-selected': selectedModelIndex === index }" @click="selectedModelIndex = index">
                                     <div class="modal-model-number">{{ index + 1 }}</div>
                                     <div class="modal-model-id" v-html="highlightMatch(model.id, modelFilter)"></div>
                                 </div>
@@ -89,125 +90,163 @@
 
                         <div class="modal-model-right">
                             <div v-if="selectedModel" class="modal-model-details">
-                                <div class="modal-model-id">{{ selectedModel.id }}</div>
+                                <div class="modal-model-attribute">
+                                    <div class="modal-model-key">MODEL</div>
+                                    <div class="modal-model-value">{{ selectedModel.id }}</div>
+                                </div>
                                 <div v-for="k in Object.keys(selectedModel).filter(k => k !== 'id')" :key="k" class="modal-model-attribute">
-                                    <span class="modal-model-key">{{ k }}:</span>
-                                    <span class="modal-model-value">{{ selectedModel[k] }}</span>
+                                    <div class="modal-model-key">{{ k }}</div>
+                                    <div class="modal-model-value">{{ selectedModel[k] }}</div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Models modal legend -->
+                    <div class="modal-legend">
+                        <div class="legend-item">
+                            <span class="legend-key">↑/↓</span>
+                            <span class="legend-desc">Navigate models</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-key">Type</span>
+                            <span class="legend-desc">Filter models</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-key">Esc</span>
+                            <span class="legend-desc">Close</span>
+                        </div>
+                    </div>
                 </div>
             </div>
+
             <!-- Log Modal -->
             <div v-if="selectedLog" class="modal" @click.self="closeModal">
                 <div class="modal-content">
                     <div class="log-container">
-                        <p>
+                        <div class="log-header">
                             <span :class="['status', 'status-' + String(selectedLog.response_status)[0] + 'xx']">
                                 {{ selectedLog.response_status }}
                             </span>
                             <span>{{ selectedLog.target_url }}</span>
-                        </p>
+                        </div>
 
-                        <div class="log-content">
-                            <div class="log-section">
-                                <div>Request Headers</div>
-                                <div v-if="selectedLog.request_headers">
-                                    <div class="button-container">
-                                        <button @click="copyToClipboard" v-html="svgCopy"></button>
+                        <div class="log-content-stacked">
+                            <div class="log-section" :class="{ 'focused': focusedSectionIndex === 0 }">
+                                <div class="log-section-header" @click="toggleRequestHeaders">
+                                    <span>Request Headers</span>
+                                    <div class="header-buttons">
+                                        <button @click.stop="toggleRequestHeaders" v-html="requestHeadersCollapsed ? svgChevronRight : svgChevronDown"></button>
+                                        <button v-if="selectedLog.request_headers" @click.stop="copyToClipboard('request_headers', $event)" v-html="svgCopy"></button>
                                     </div>
-                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.request_headers) }}</code></pre>
+                                </div>
+                                <div v-if="selectedLog.request_headers && !requestHeadersCollapsed" class="log-section-content">
+                                    <pre><code :class="formattedRequestHeaders.language" v-text="formattedRequestHeaders.content"></code></pre>
+                                </div>
+                            </div>
+                            <div class="log-section" :class="{ 'focused': focusedSectionIndex === 1 }">
+                                <div class="log-section-header" @click="toggleRequestBody">
+                                    <span>Request Body</span>
+                                    <div class="header-buttons">
+                                        <button @click.stop="toggleRequestBody" v-html="requestBodyCollapsed ? svgChevronRight : svgChevronDown"></button>
+                                        <button v-if="selectedLog.request_body" @click.stop="copyToClipboard('request_body', $event)" v-html="svgCopy"></button>
+                                    </div>
+                                </div>
+                                <div v-if="selectedLog.request_body && !requestBodyCollapsed" class="log-section-content">
+                                    <pre><code :class="formattedRequestBody.language" v-text="formattedRequestBody.content"></code></pre>
                                 </div>
                             </div>
 
-                            <div class="log-section">
-                                <div>Request Body</div>
-                                <div v-if="selectedLog.request_body">
-                                    <div class="button-container">
-                                        <button @click="copyToClipboard" v-html="svgCopy"></button>
+                            <div class="log-section" :class="{ 'focused': focusedSectionIndex === 2 }">
+                                <div class="log-section-header" @click="toggleResponseHeaders">
+                                    <span>Response Headers</span>
+                                    <div class="header-buttons">
+                                        <button @click.stop="toggleResponseHeaders" v-html="responseHeadersCollapsed ? svgChevronRight : svgChevronDown"></button>
+                                        <button v-if="selectedLog.response_headers" @click.stop="copyToClipboard('response_headers', $event)" v-html="svgCopy"></button>
                                     </div>
-                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.request_body) }}</code></pre>
+                                </div>
+                                <div v-if="selectedLog.response_headers && !responseHeadersCollapsed" class="log-section-content">
+                                    <pre><code :class="formattedResponseHeaders.language" v-text="formattedResponseHeaders.content"></code></pre>
                                 </div>
                             </div>
 
-                            <div class="log-section">
-                                <div>Response Headers</div>
-                                <div v-if="selectedLog.response_headers">
-                                    <div class="button-container">
-                                        <button @click="copyToClipboard" v-html="svgCopy"></button>
-                                    </div>
-                                    <pre><code class="language-json">{{ prettyJSON(selectedLog.response_headers) }}</code></pre>
-                                </div>
-                            </div>
-
-                            <div class="log-section">
-                                <div>Response Body</div>
-                                <div v-if="selectedLog.response_body">
-                                    <div class="button-container">
+                            <div class="log-section" :class="{ 'focused': focusedSectionIndex === 3 }">
+                                <div class="log-section-header" @click="toggleResponseBodyCollapse">
+                                    <span>Response Body</span>
+                                    <div class="header-buttons">
                                         <template v-if="selectedLog._responseBodyHasChunks">
-                                            <button @click="toggleResponseBody" class="copy-btn" v-html="isRenderingBody ? '...' : svgCode"></button>
+                                            <button @click.stop="toggleResponseBody" class="copy-btn" v-html="isRenderingBody ? '...' : svgCode"></button>
                                         </template>
-                                        <button @click="copyToClipboard" v-html="svgCopy"></button>
+                                        <button @click.stop="toggleResponseBodyCollapse" v-html="responseBodyCollapsed ? svgChevronRight : svgChevronDown"></button>
+                                        <button v-if="selectedLog.response_body" @click.stop="copyToClipboard('response_body', $event)" v-html="svgCopy"></button>
                                     </div>
-                                    <pre><code ref="responseBodyCode" class="language-json">{{ prettyJSON(selectedLog.response_body) }}</code></pre>
                                 </div>
+                                <div v-if="selectedLog.response_body && !responseBodyCollapsed" class="log-section-content">
+                                    <pre><code ref="responseBodyCode" :class="formattedResponse.language" v-text="formattedResponse.content"></code></pre>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Keyboard navigation legend -->
+                        <div class="modal-legend">
+                            <div class="legend-item">
+                                <span class="legend-key">↑/↓</span>
+                                <span class="legend-desc">Navigate sections</span>
+                            </div>
+                            <div class="legend-item" :class="{ 'legend-disabled': responseBodyCollapsed }">
+                                <span class="legend-key">Space</span>
+                                <span class="legend-desc">Toggle response mode</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-key">→</span>
+                                <span class="legend-desc">Expand</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-key">←</span>
+                                <span class="legend-desc">Collapse</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-key">C</span>
+                                <span class="legend-desc">Copy section</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-key">Y</span>
+                                <span class="legend-desc">Toggle YAML</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Help Modal -->
-            <div v-if="showHelp" class="modal modal-help" @click.self="closeModal">
-                <div class="modal-content">
-                    <div class="help-section">
-                        <h3>Navigation</h3>
-                        <div class="help-shortcut">
-                            <span class="help-key">↑ / ↓</span>
-                            <span class="help-description">Move selection up/down</span>
-                        </div>
-                        <div class="help-shortcut">
-                            <span class="help-key">← / →</span>
-                            <span class="help-description">Previous/next page</span>
-                        </div>
-                        <div class="help-shortcut">
-                            <span class="help-key">Shift + ↑/↓</span>
-                            <span class="help-description">Jump to previous/next marker</span>
-                        </div>
-                        <div class="help-shortcut">
-                            <span class="help-key">Enter</span>
-                            <span class="help-description">Open selected log details</span>
-                        </div>
-                    </div>
-
-                    <div class="help-section">
-                        <h3>Markers</h3>
-                        <div class="help-shortcut">
-                            <span class="help-key">m / Space</span>
-                            <span class="help-description">Add/cycle marker above selection</span>
-                        </div>
-                        <div class="help-shortcut">
-                            <span class="help-key">c</span>
-                            <span class="help-description">Clear all markers</span>
-                        </div>
-                    </div>
-
-                    <div class="help-section">
-                        <h3>Other</h3>
-                        <div class="help-shortcut">
-                            <span class="help-key">o</span>
-                            <span class="help-description">Show models</span>
-                        </div>
-                        <div class="help-shortcut">
-                            <span class="help-key">?</span>
-                            <span class="help-description">Show this help</span>
-                        </div>
-                        <div class="help-shortcut">
-                            <span class="help-key">Escape</span>
-                            <span class="help-description">Close modal</span>
-                        </div>
-                    </div>
+            <!-- Table listings legend - Page footer -->
+            <div class="table-legend">
+                <div class="legend-item">
+                    <span class="legend-key">↑/↓</span>
+                    <span class="legend-desc">Navigate rows</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-key">←/→</span>
+                    <span class="legend-desc">Previous/next page</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-key">Enter</span>
+                    <span class="legend-desc">Open details</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-key">Space/M</span>
+                    <span class="legend-desc">Add marker</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-key">Shift+↑/↓</span>
+                    <span class="legend-desc">Jump to marker</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-key">O</span>
+                    <span class="legend-desc">Models</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-key">C</span>
+                    <span class="legend-desc">Clear markers</span>
                 </div>
             </div>
         </div>
@@ -228,15 +267,25 @@
                     sseRetries: 0,
                     models: null,
                     modelFilter: '',
+                    searchFilter: '',
                     selectedModel: null,
+                    selectedModelIndex: 0,
                     selectedLog: null,
                     selectedLogIndex: -1,
-                    showHelp: false,
+                    focusedSectionIndex: 0, // For keyboard navigation in detail modal
+                    detailSections: ['request_headers', 'request_body', 'response_headers', 'response_body'],
+                    requestHeadersCollapsed: true,
+                    requestBodyCollapsed: false,
+                    responseHeadersCollapsed: true,
+                    responseBodyCollapsed: false,
+                    yamlMode: false,
                     markers: new Map(), // Store marker IDs and their colors
                     markerColors: 4, // Number of marker colors (1-4)
                     clientID: "",
                     svgCode: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16l-4-4 4-4M16 8l4 4-4 4M13 6l-3 12" /></svg>',
                     svgCopy: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>',
+                    svgChevronDown: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>',
+                    svgChevronRight: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>',
                 }
             },
             computed: {
@@ -244,13 +293,22 @@
                     if (!this.models?.data) {
                         return []
                     }
-                    if (!this.modelFilter) {
+                    if (!this.searchFilter) {
                         return this.models.data
                     }
-                    const searchText = this.modelFilter.toLowerCase()
-                    return this.models.data.filter(model =>
-                        model.id.toLowerCase().includes(searchText)
-                    )
+                    const searchText = this.searchFilter.toLowerCase()
+
+                    // Get models with fuzzy match scores
+                    const matchedModels = this.models.data
+                        .map(model => ({
+                            model,
+                            score: this.fuzzyScore(model.id, searchText)
+                        }))
+                        .filter(item => item.score > 0)
+                        .sort((a, b) => b.score - a.score) // Sort by score descending
+                        .map(item => item.model)
+
+                    return matchedModels
                 },
                 logsWithMarkers() {
                     const result = []
@@ -263,12 +321,31 @@
                         result.push(log)
                     }
                     return result
+                },
+                formattedRequestHeaders() {
+                    return this.formatSection(this.selectedLog?.request_headers, this.compactJSON)
+                },
+                formattedRequestBody() {
+                    return this.formatSection(this.selectedLog?.request_body, this.compactJSON)
+                },
+                formattedResponseHeaders() {
+                    return this.formatSection(this.selectedLog?.response_headers, this.compactJSON)
+                },
+                formattedResponse() {
+                    return this.formatSection(this.selectedLog?.response_body, this.compactJSON)
                 }
             },
             watch: {
                 filteredModels(newFilteredModels) {
                     if (newFilteredModels.length > 0) {
+                        this.selectedModelIndex = 0;
                         this.selectedModel = newFilteredModels[0];
+                    }
+                },
+                selectedModelIndex(newIndex) {
+                    if (this.filteredModels.length > 0 && newIndex >= 0 && newIndex < this.filteredModels.length) {
+                        this.selectedModel = this.filteredModels[newIndex];
+                        this.modelFilter = this.selectedModel.id;
                     }
                 }
             },
@@ -283,6 +360,33 @@
                     } catch (e) {
                         console.warn('Failed to load markers from localStorage:', e)
                         this.markers = new Map()
+                    }
+                },
+                loadAccordionStates() {
+                    try {
+                        const saved = localStorage.getItem('llmsee-accordion-states')
+                        if (saved) {
+                            const states = JSON.parse(saved)
+                            this.requestHeadersCollapsed = states.requestHeadersCollapsed ?? true
+                            this.requestBodyCollapsed = states.requestBodyCollapsed ?? false
+                            this.responseHeadersCollapsed = states.responseHeadersCollapsed ?? true
+                            this.responseBodyCollapsed = states.responseBodyCollapsed ?? false
+                        }
+                    } catch (e) {
+                        console.warn('Failed to load accordion states from localStorage:', e)
+                    }
+                },
+                saveAccordionStates() {
+                    try {
+                        const states = {
+                            requestHeadersCollapsed: this.requestHeadersCollapsed,
+                            requestBodyCollapsed: this.requestBodyCollapsed,
+                            responseHeadersCollapsed: this.responseHeadersCollapsed,
+                            responseBodyCollapsed: this.responseBodyCollapsed
+                        }
+                        localStorage.setItem('llmsee-accordion-states', JSON.stringify(states))
+                    } catch (e) {
+                        console.warn('Failed to save accordion states to localStorage:', e)
                     }
                 },
                 saveMarkers() {
@@ -326,6 +430,14 @@
                         }
                     })
                 },
+                scrollToSelectedModel() {
+                    this.$nextTick(() => {
+                        const selectedModel = document.querySelector('.modal-model-item.modal-model-selected')
+                        if (selectedModel) {
+                            selectedModel.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        }
+                    })
+                },
                 openSelectedRow() {
                     if (this.selectedLogIndex >= 0 && this.selectedLogIndex < this.logs.length) {
                         const log = this.logs[this.selectedLogIndex]
@@ -337,6 +449,7 @@
                     const logIndex = this.logs.findIndex(log => log.id === logId)
                     if (logIndex !== -1) {
                         this.selectedLogIndex = logIndex
+                        // Don't reset accordion states - use saved preferences
                         this.fetchLogDetail(logId)
                     }
                 },
@@ -360,7 +473,7 @@
                     this.scrollToSelectedRow();
                 },
                 showingModal() {
-                    return this.models || this.selectedLog || this.showHelp
+                    return this.models || this.selectedLog
                 },
                 async fetchLogs(page) {
                     this.loading = true
@@ -388,6 +501,7 @@
                         const data = await response.json()
                         history.pushState({ showmodal: true }, '', `#${id}`)
                         this.selectedLog = data
+                        this.focusedSectionIndex = 0 // Reset focus to first section
                         this.selectedLog._responseBodyHasChunks = this.selectedLog.response_body.indexOf("data:") !== -1
 
                         if (this.selectedLog._responseBodyHasChunks) {
@@ -439,7 +553,18 @@
                         const response = await fetch('/v1/models')
                         const data = await response.json()
                         this.models = data || []
+                        this.selectedModelIndex = 0 // Initialize selected model index
+                        this.modelFilter = '' // Reset display filter
+                        this.searchFilter = '' // Reset search filter
                         history.pushState({ showmodal: true }, '', `#models`)
+
+                        // Auto-focus on search box after modal is rendered
+                        this.$nextTick(() => {
+                            const searchInput = document.querySelector('.modal-model-filter-input')
+                            if (searchInput) {
+                                searchInput.focus()
+                            }
+                        })
                     } catch (error) {
                         console.error('Error fetching models:', error)
                     }
@@ -486,7 +611,9 @@
                     if (this.showingModal()) {
                         this.models = null
                         this.selectedLog = null
-                        this.showHelp = false
+                        this.selectedModelIndex = 0
+                        this.modelFilter = ''
+                        this.searchFilter = ''
                     }
                 },
                 addMarker() {
@@ -520,13 +647,127 @@
 
                     return timestamp
                 },
-                prettyJSON(str) {
+                compactJSON(str) {
                     try {
                         const obj = JSON.parse(str)
-                        return JSON.stringify(obj, null, 2)
+                        return this.formatCompactJSON(obj, 0)
                     } catch (e) {
                         return str
                     }
+                },
+                formatCompactJSON(obj, depth = 0) {
+                    const indent = ' '.repeat(depth)
+                    const nextIndent = ' '.repeat(depth + 1)
+
+                    if (obj === null) return 'null'
+                    if (typeof obj !== 'object') return JSON.stringify(obj)
+
+                    if (Array.isArray(obj)) {
+                        // Single-line arrays for simple values
+                        if (obj.length <= 3 && obj.every(item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')) {
+                            return JSON.stringify(obj)
+                        }
+                        // Multi-line for complex arrays
+                        const items = obj.map(item => nextIndent + this.formatCompactJSON(item, depth + 1))
+                        return '[\n' + items.join(',\n') + '\n' + indent + ']'
+                    }
+
+                    // Objects
+                    const entries = Object.entries(obj)
+                    if (entries.length === 0) return '{}'
+
+                    // Single-line objects for simple key-value pairs
+                    if (entries.length <= 2 && entries.every(([k, v]) =>
+                        typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ||
+                        (Array.isArray(v) && v.length === 1 && typeof v[0] === 'string')
+                    )) {
+                        return JSON.stringify(obj)
+                    }
+
+                    // Multi-line objects
+                    const pairs = entries.map(([key, value]) => {
+                        const formattedValue = this.formatCompactJSON(value, depth + 1)
+                        return nextIndent + JSON.stringify(key) + ': ' + formattedValue
+                    })
+                    return '{\n' + pairs.join(',\n') + '\n' + indent + '}'
+                },
+                toggleYamlMode() {
+                    this.yamlMode = !this.yamlMode
+                    // Re-highlight syntax after mode change
+                    this.$nextTick(() => {
+                        if (typeof Prism !== 'undefined') {
+                            Prism.highlightAll()
+                        }
+                    })
+                },
+                formatAsYaml(input) {
+                    try {
+                        // Handle null or undefined
+                        if (input == null) {
+                            return ''
+                        }
+
+                        let obj
+                        // Check if input is already an object/array
+                        if (typeof input === 'object') {
+                            obj = input
+                        } else if (typeof input === 'string') {
+                            // Handle empty strings
+                            if (input.trim() === '') {
+                                return ''
+                            }
+                            // Try to parse as JSON string
+                            obj = JSON.parse(input)
+                        } else {
+                            // For other types, convert to string
+                            return String(input)
+                        }
+
+                        return this.objectToYaml(obj, 0)
+                    } catch (e) {
+                        console.warn('Failed to parse JSON for YAML conversion:', e, 'Input:', input)
+                        // If it's not valid JSON, return the original input as string
+                        return String(input)
+                    }
+                },
+                objectToYaml(obj, depth = 0) {
+                    const indent = '  '.repeat(depth)
+
+                    if (obj === null) return 'null'
+                    if (typeof obj === 'string') {
+                        // Handle multiline strings and strings with line breaks
+                        if (obj.includes('\n') || obj.length > 80) {
+                            return '|\n' + obj.split('\n').map(line => indent + '  ' + line).join('\n')
+                        }
+                        return JSON.stringify(obj)
+                    }
+                    if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
+
+                    if (Array.isArray(obj)) {
+                        if (obj.length === 0) return '[]'
+                        return obj.map(item => {
+                            const yamlItem = this.objectToYaml(item, depth + 1)
+                            if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+                                return indent + '-\n' + yamlItem.split('\n').map(line => '  ' + line).join('\n')
+                            }
+                            return indent + '- ' + yamlItem
+                        }).join('\n')
+                    }
+
+                    if (typeof obj === 'object') {
+                        const entries = Object.entries(obj)
+                        if (entries.length === 0) return '{}'
+
+                        return entries.map(([key, value]) => {
+                            const yamlValue = this.objectToYaml(value, depth + 1);
+                            if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+                                return `${indent}${key}:\n${yamlValue.split('\n').map(line => '  ' + line).join('\n')}`;
+                            }
+                            return `${indent}${key}: ${yamlValue}`;
+                        }).join('\n');
+                    }
+
+                    return String(obj)
                 },
                 toggleResponseBody(e) {
                     if (!this.selectedLog._responseBodyHasChunks) return
@@ -562,26 +803,109 @@
                         popup.remove();
                     }, duration);
                 },
-                copyToClipboard(e) {
-                    const pre = e.target.closest('div.log-section').querySelector('pre code');
-                    const textToCopy = pre.textContent || pre.innerText;
+                copyToClipboard(field, e) {
+                    let textToCopy = '';
+                    let targetElement = null;
 
-                    navigator.clipboard.writeText(textToCopy)
-                        .then(() => {
-                            this.showTip(e.target, 'Copied!');
-                        })
-                        .catch(err => console.error('Error copying text: ', err));
+                    if (field && this.selectedLog[field]) {
+                        // Copy from data object
+                        textToCopy = this.prettyJSON(this.selectedLog[field]);
+                        targetElement = e.target;
+                    } else {
+                        // Fallback to DOM method for backward compatibility
+                        const logSection = e.target.closest('div.log-section');
+                        const pre = logSection.querySelector('pre code');
+                        if (pre) {
+                            textToCopy = pre.textContent || pre.innerText;
+                            targetElement = e.target;
+                        }
+                    }
+
+                    if (textToCopy && targetElement) {
+                        navigator.clipboard.writeText(textToCopy)
+                            .then(() => {
+                                this.showTip(targetElement, 'Copied!');
+                            })
+                            .catch(err => console.error('Error copying text: ', err));
+                    }
                 },
                 keyListener(e) {
                     const showingModal = this.showingModal()
                     const isInputField = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'
                     const inListings = !showingModal && !isInputField
+                    const inModelsModal = this.models && !this.selectedLog
+                    const inDetailModal = this.selectedLog && !this.models
 
                     if (e.key === 'Escape' && showingModal) {
                         e.preventDefault()
                         e.stopPropagation()
                         this.closeModal()
                         return
+                    }
+
+                    // Handle keyboard navigation in detail modal
+                    if (inDetailModal) {
+                        if (e.key === 'ArrowDown') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            this.navigateDetailSection('down')
+                            return
+                        }
+                        if (e.key === 'ArrowUp') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            this.navigateDetailSection('up')
+                            return
+                        }
+                        if (e.key === ' ') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            // Only toggle response mode if response body is expanded
+                            if (!this.responseBodyCollapsed) {
+                                this.toggleResponseBody()
+                            }
+                            return
+                        }
+                        if (e.key === 'ArrowRight') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            this.expandFocusedSection()
+                            return
+                        }
+                        if (e.key === 'ArrowLeft') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            this.collapseFocusedSection()
+                            return
+                        }
+                        if (e.key === 'c' || e.key === 'C') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            this.copyFocusedSection()
+                            return
+                        }
+                    }
+
+                    // Handle keyboard navigation in models modal
+                    if (inModelsModal) {
+                        if (e.key === 'ArrowDown') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (this.selectedModelIndex < this.filteredModels.length - 1) {
+                                this.selectedModelIndex++
+                                this.scrollToSelectedModel()
+                            }
+                            return
+                        }
+                        if (e.key === 'ArrowUp') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (this.selectedModelIndex > 0) {
+                                this.selectedModelIndex--
+                                this.scrollToSelectedModel()
+                            }
+                            return
+                        }
                     }
 
                     if (inListings) {
@@ -645,12 +969,14 @@
                             this.clearMarkers()
                             return
                         }
-                        if (e.key === '?') {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            this.showHelp = true
-                            return
-                        }
+                    }
+
+                    // YAML toggle works in both listings and detail modal
+                    if ((inListings || this.selectedLog) && e.key === 'y') {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        this.toggleYamlMode()
+                        return
                     }
                 },
                 popStateListener(e) {
@@ -660,15 +986,269 @@
                         this.closeModal()
                     }
                 },
+                onSearchInput() {
+                    this.searchFilter = this.modelFilter;
+                },
+                fuzzyScore(text, pattern) {
+                    if (!pattern) return 1;
+                    if (!text) return 0;
+
+                    const textLower = text.toLowerCase();
+                    const patternLower = pattern.toLowerCase();
+
+                    // Exact match gets highest score
+                    if (textLower === patternLower) return 1000;
+
+                    // Starts with pattern gets high score
+                    if (textLower.startsWith(patternLower)) return 900;
+
+                    // Contains pattern as substring gets good score
+                    if (textLower.includes(patternLower)) return 800;
+
+                    // Split pattern by spaces and match each word separately
+                    const patternWords = patternLower.split(/\s+/).filter(w => w.length > 0);
+                    if (patternWords.length > 1) {
+                        let totalScore = 0;
+                        for (const word of patternWords) {
+                            const wordScore = this.fuzzyScore(text, word);
+                            if (wordScore === 0) return 0; // All words must match
+                            totalScore += wordScore;
+                        }
+                        return totalScore / patternWords.length; // Average score
+                    }
+
+                    // Single word fuzzy matching
+                    // Split text into words (by spaces, hyphens, dots, underscores)
+                    const textWords = textLower.split(/[\s\-\._]+/);
+
+                    // Check if pattern matches any word start
+                    for (const word of textWords) {
+                        if (word.startsWith(patternLower)) {
+                            return 700; // High score for word start match
+                        }
+                    }
+
+                    // Check if pattern is contained in any word
+                    for (const word of textWords) {
+                        if (word.includes(patternLower)) {
+                            return 600; // Good score for word contains
+                        }
+                    }
+
+                    // Fuzzy matching - characters in sequence but not necessarily consecutive
+                    let textIndex = 0;
+                    let score = 0;
+                    let consecutiveMatches = 0;
+                    let lastMatchIndex = -1;
+                    let wordBoundaryBonus = 0;
+
+                    for (let i = 0; i < patternLower.length; i++) {
+                        const char = patternLower[i];
+                        const foundIndex = textLower.indexOf(char, textIndex);
+
+                        if (foundIndex === -1) {
+                            return 0; // Character not found, no match
+                        }
+
+                        // Base score for finding the character
+                        score += 10;
+
+                        // Bonus for consecutive characters
+                        if (foundIndex === lastMatchIndex + 1) {
+                            consecutiveMatches++;
+                            score += consecutiveMatches * 5; // Increasing bonus for longer sequences
+                        } else {
+                            consecutiveMatches = 0;
+                        }
+
+                        // Bonus for characters at word boundaries
+                        if (foundIndex === 0 || /[\s\-\._]/.test(textLower[foundIndex - 1])) {
+                            wordBoundaryBonus += 15;
+                        }
+
+                        // Bonus for early matches (characters found near the beginning)
+                        score += Math.max(0, 10 - foundIndex);
+
+                        textIndex = foundIndex + 1;
+                        lastMatchIndex = foundIndex;
+                    }
+
+                    score += wordBoundaryBonus;
+
+                    // Bonus for matching all characters with fewer gaps
+                    const efficiency = patternLower.length / (lastMatchIndex - textLower.indexOf(patternLower[0]) + 1);
+                    score += efficiency * 20;
+
+                    return score;
+                },
                 highlightMatch(text, filter) {
                     if (!filter) return text
 
-                    const regex = new RegExp(`(${filter})`, 'gi')
-                    return text.replace(regex, '<span class="highlight">$1</span>')
+                    const textLower = text.toLowerCase()
+                    const filterLower = filter.toLowerCase()
+
+                    // Handle multi-word searches
+                    const filterWords = filterLower.split(/\s+/).filter(w => w.length > 0);
+                    if (filterWords.length > 1) {
+                        let result = text;
+                        for (const word of filterWords) {
+                            result = this.highlightMatch(result, word);
+                        }
+                        return result;
+                    }
+
+                    // For exact substring matches, use the original highlighting
+                    if (textLower.includes(filterLower)) {
+                        const regex = new RegExp(`(${this.escapeRegex(filter)})`, 'gi')
+                        return text.replace(regex, '<span class="highlight">$1</span>')
+                    }
+
+                    // Check for word-level matches first
+                    const textWords = text.split(/(\s+|[\-\._]+)/); // Keep separators
+                    let hasWordMatch = false;
+
+                    for (let i = 0; i < textWords.length; i++) {
+                        const word = textWords[i];
+                        const wordLower = word.toLowerCase();
+
+                        if (wordLower.startsWith(filterLower) || wordLower.includes(filterLower)) {
+                            const regex = new RegExp(`(${this.escapeRegex(filter)})`, 'gi');
+                            textWords[i] = word.replace(regex, '<span class="highlight">$1</span>');
+                            hasWordMatch = true;
+                        }
+                    }
+
+                    if (hasWordMatch) {
+                        return textWords.join('');
+                    }
+
+                    // For fuzzy matches, highlight individual matching characters
+                    let result = ''
+                    let filterIndex = 0
+
+                    for (let i = 0; i < text.length; i++) {
+                        const char = text[i]
+                        const charLower = char.toLowerCase()
+
+                        if (filterIndex < filterLower.length && charLower === filterLower[filterIndex]) {
+                            result += `<span class="highlight">${char}</span>`
+                            filterIndex++
+                        } else {
+                            result += char
+                        }
+                    }
+
+                    return result
+                },
+                escapeRegex(string) {
+                    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                },
+                toggleRequestHeaders() {
+                    this.requestHeadersCollapsed = !this.requestHeadersCollapsed
+                    this.saveAccordionStates()
+                    if (!this.requestHeadersCollapsed) {
+                        this.$nextTick(() => Prism.highlightAll())
+                    }
+                },
+                toggleRequestBody() {
+                    this.requestBodyCollapsed = !this.requestBodyCollapsed
+                    this.saveAccordionStates()
+                    if (!this.requestBodyCollapsed) {
+                        this.$nextTick(() => Prism.highlightAll())
+                    }
+                },
+                toggleResponseHeaders() {
+                    this.responseHeadersCollapsed = !this.responseHeadersCollapsed
+                    this.saveAccordionStates()
+                    if (!this.responseHeadersCollapsed) {
+                        this.$nextTick(() => Prism.highlightAll())
+                    }
+                },
+                toggleResponseBodyCollapse() {
+                    this.responseBodyCollapsed = !this.responseBodyCollapsed
+                    this.saveAccordionStates()
+                    if (!this.responseBodyCollapsed) {
+                        this.$nextTick(() => Prism.highlightAll())
+                    }
+                },
+                navigateDetailSection(direction) {
+                    if (direction === 'down') {
+                        this.focusedSectionIndex = (this.focusedSectionIndex + 1) % this.detailSections.length
+                    } else if (direction === 'up') {
+                        this.focusedSectionIndex = (this.focusedSectionIndex - 1 + this.detailSections.length) % this.detailSections.length
+                    }
+                    this.scrollToFocusedSection()
+                },
+                scrollToFocusedSection() {
+                    this.$nextTick(() => {
+                        const focusedSection = document.querySelector('.log-section.focused')
+                        if (focusedSection) {
+                            focusedSection.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        }
+                    })
+                },
+                expandFocusedSection() {
+                    const sectionName = this.detailSections[this.focusedSectionIndex]
+                    switch (sectionName) {
+                        case 'request_headers':
+                            if (this.requestHeadersCollapsed) this.toggleRequestHeaders()
+                            break
+                        case 'request_body':
+                            if (this.requestBodyCollapsed) this.toggleRequestBody()
+                            break
+                        case 'response_headers':
+                            if (this.responseHeadersCollapsed) this.toggleResponseHeaders()
+                            break
+                        case 'response_body':
+                            if (this.responseBodyCollapsed) this.toggleResponseBodyCollapse()
+                            break
+                    }
+                },
+                collapseFocusedSection() {
+                    const sectionName = this.detailSections[this.focusedSectionIndex]
+                    switch (sectionName) {
+                        case 'request_headers':
+                            if (!this.requestHeadersCollapsed) this.toggleRequestHeaders()
+                            break
+                        case 'request_body':
+                            if (!this.requestBodyCollapsed) this.toggleRequestBody()
+                            break
+                        case 'response_headers':
+                            if (!this.responseHeadersCollapsed) this.toggleResponseHeaders()
+                            break
+                        case 'response_body':
+                            if (!this.responseBodyCollapsed) this.toggleResponseBodyCollapse()
+                            break
+                    }
+                },
+                copyFocusedSection() {
+                    const sectionName = this.detailSections[this.focusedSectionIndex]
+                    if (this.selectedLog && this.selectedLog[sectionName]) {
+                        const textToCopy = this.prettyJSON(this.selectedLog[sectionName])
+                        navigator.clipboard.writeText(textToCopy)
+                            .then(() => {
+                                const focusedSection = document.querySelector('.log-section.focused .log-section-header')
+                                if (focusedSection) {
+                                    this.showTip(focusedSection, 'Copied!')
+                                }
+                            })
+                            .catch(err => console.error('Error copying text: ', err))
+                    }
+                },
+                formatSection(sectionValue, jsonFormatter = this.prettyJSON) {
+                    if (!sectionValue) return { content: '', language: 'language-json' }
+                    if (this.yamlMode) {
+                        const yaml = this.formatAsYaml(sectionValue)
+                        if (yaml && yaml !== String(sectionValue)) {
+                            return { content: yaml, language: 'language-yaml' }
+                        }
+                    }
+                    return { content: jsonFormatter(sectionValue), language: 'language-json' }
                 }
             },
             mounted() {
                 this.loadMarkers()
+                this.loadAccordionStates()
                 document.addEventListener('keydown', this.keyListener)
                 window.addEventListener('popstate', this.popStateListener)
 
