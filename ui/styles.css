@@ -41,11 +41,10 @@
     padding: 20px;
     border: 1px solid #888;
     width: 90%;
+    max-width: 1200px;
     height: 90%;
-    max-width: 90%;
-    max-height: 90%;
     border-radius: 5px;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .modal-content pre,
@@ -55,6 +54,11 @@
     word-break: break-word !important;
     overflow-wrap: break-word !important;
     max-width: 100% !important;
+}
+
+/* Global font size increase for all code content */
+pre, code {
+    font-size: 14px !important;
 }
 
 .modal-content code {
@@ -70,50 +74,141 @@
     position: relative;
 }
 
-.modal-content .button-container {
-    position: absolute;
-    top: -35px;
-    right: 0px;
-    display: flex;
-    gap: 3px;
-}
 
-.modal-content .button-container button {
-    width: 30px;
-    height: 30px;
-    padding: 2px;
-    cursor: pointer;
-    transition: all 0.2s;
-    background-color: #ffffff;
-}
-
-.modal-content .button-container button:hover {
-    border-color: #33C3F0;
-    background-color: #33C3F0;
-}
-
+/* Modern Log Modal - Clean Design */
 .modal-content .log-container {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 0;
 }
 
-.modal-content .log-content {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 1px;
+.modal-content .log-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 0 20px 0;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: #555;
 }
 
-@media (max-width: 768px) {
-    .modal-content .log-content {
-        grid-template-columns: 1fr;
-        gap: 10px;
-    }
+.modal-content .log-content-stacked {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.modal-content .log-content-stacked::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
+
+.modal-content .log-content-stacked {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
 }
 
 .modal-content .log-section {
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    background-color: #f9f9f9;
+    border-bottom: 1px solid #eee;
+}
+
+.modal-content .log-section:last-child {
+    border-bottom: none;
+}
+
+.modal-content .log-section.focused {
+    background-color: #f8f9fa;
+    border-left: 3px solid #007bff;
+    padding-left: 8px;
+    margin-left: -8px;
+}
+
+.modal-content .log-section-header {
+    padding: 8px 0;
+    background: none;
+    color: #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 14px;
+    user-select: none;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.modal-content .log-section-header:hover {
+    background-color: #f0f0f0;
+}
+
+.modal-content .log-section-content {
+    padding: 0 0 20px 0;
+    background-color: transparent;
+}
+
+.modal-content .log-section-content pre {
+    margin: 0;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 16px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.header-buttons button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-buttons button svg {
+    width: 20px;
+    height: 20px;
+    color: #666;
+    transition: color 0.15s ease;
+}
+
+.header-buttons button:hover {
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+}
+
+.header-buttons button:hover svg {
+    color: #333;
+}
+
+.header-buttons button.active {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+.header-buttons button.active:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+}
+
+.header-buttons button.active svg {
+    color: white;
 }
 
 span.status {
@@ -135,10 +230,6 @@ span.status-4xx {
 
 span.status-5xx {
     background-color: #dc3545;
-}
-
-.modal-content .log-container span.status {
-    margin-right: 5px;
 }
 
 #table-container {
@@ -316,7 +407,7 @@ span.status-5xx {
 .modal-model-flex-container {
     display: flex;
     width: 100%;
-    height: 100%;
+    height: calc(100% - 60px); /* Reserve space for legend */
 }
 
 .modal-model-left {
@@ -328,7 +419,7 @@ span.status-5xx {
 }
 
 .modal-model-list {
-    height: calc(100% - 50px);
+    height: calc(100% - 60px); /* Account for filter input height + margin */
     overflow-y: auto;
 }
 
@@ -338,12 +429,14 @@ span.status-5xx {
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
+    margin-bottom: 12px;
 }
 
 .modal-model-right {
     flex: 2;
     padding-left: 10px;
     overflow-y: auto;
+    height: 100%;
 }
 
 .modal-model-item {
@@ -385,8 +478,15 @@ span.status-5xx {
 }
 
 .modal-model-details .modal-model-key {
+    font-family: monospace;
     font-weight: bold;
-    margin-right: 5px;
+    padding-left: 5px;
+}
+
+.modal-model-details .modal-model-value {
+    font-family: monospace;
+    background-color: #F0F0F0;
+    padding: 5px;
 }
 
 .highlight {
@@ -438,4 +538,96 @@ span.status-5xx {
     flex: 1;
     margin-left: 15px;
     color: #555;
+}
+
+/* Modal legend for keyboard shortcuts */
+.modal-legend {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 12px 0 0 0;
+    margin-top: 16px;
+    border-top: 1px solid #eee;
+    font-size: 12px;
+    color: #666;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-key {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: #495057;
+    min-width: 20px;
+    text-align: center;
+}
+
+.legend-desc {
+    color: #6c757d;
+    font-size: 11px;
+}
+
+/* Table legend for main listings */
+.table-legend {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    padding: 16px 0;
+    margin-top: 20px;
+    border-top: 1px solid #eee;
+    font-size: 12px;
+    color: #666;
+    flex-wrap: wrap;
+    background-color: #fafafa;
+    border-radius: 4px;
+}
+
+.table-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.table-legend .legend-key {
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: #495057;
+    min-width: 20px;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.table-legend .legend-desc {
+    color: #6c757d;
+    font-size: 11px;
+}
+
+/* Disabled legend items */
+.legend-disabled {
+    opacity: 0.4;
+}
+
+.legend-disabled .legend-key {
+    background-color: #f8f9fa !important;
+    color: #adb5bd !important;
+    border-color: #dee2e6 !important;
+}
+
+.legend-disabled .legend-desc {
+    color: #adb5bd !important;
 }
