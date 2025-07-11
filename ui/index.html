@@ -81,7 +81,7 @@
                             </div>
 
                             <div class="modal-model-list">
-                                <div v-for="(model, index) in filteredModels" :key="index" class="modal-model-item" :class="{ 'modal-model-selected': selectedModelIndex === index }" @click="selectedModelIndex = index">
+                                <div v-for="(model, index) in filteredModels" :key="model.id" class="modal-model-item" :class="{ 'modal-model-selected': selectedModelIndex === index }" @click="selectedModelIndex = index">
                                     <div class="modal-model-number">{{ index + 1 }}</div>
                                     <div class="modal-model-id" v-html="highlightMatch(model.id, modelFilter)"></div>
                                 </div>
@@ -101,7 +101,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Models modal legend -->
                     <div class="modal-legend">
                         <div class="legend-item">
@@ -141,10 +141,9 @@
                                     </div>
                                 </div>
                                 <div v-if="selectedLog.request_headers && !requestHeadersCollapsed" class="log-section-content">
-                                    <pre><code :class="yamlMode ? 'language-yaml' : 'language-json'">{{ yamlMode ? formatAsYaml(selectedLog.request_headers) : compactJSON(selectedLog.request_headers) }}</code></pre>
+                                    <pre><code :class="formattedRequestHeaders.language" v-text="formattedRequestHeaders.content"></code></pre>
                                 </div>
                             </div>
-
                             <div class="log-section" :class="{ 'focused': focusedSectionIndex === 1 }">
                                 <div class="log-section-header" @click="toggleRequestBody">
                                     <span>Request Body</span>
@@ -154,7 +153,7 @@
                                     </div>
                                 </div>
                                 <div v-if="selectedLog.request_body && !requestBodyCollapsed" class="log-section-content">
-                                    <pre><code :class="yamlMode ? 'language-yaml' : 'language-json'">{{ yamlMode ? formatAsYaml(selectedLog.request_body) : prettyJSON(selectedLog.request_body) }}</code></pre>
+                                    <pre><code :class="formattedRequestBody.language" v-text="formattedRequestBody.content"></code></pre>
                                 </div>
                             </div>
 
@@ -167,7 +166,7 @@
                                     </div>
                                 </div>
                                 <div v-if="selectedLog.response_headers && !responseHeadersCollapsed" class="log-section-content">
-                                    <pre><code :class="yamlMode ? 'language-yaml' : 'language-json'">{{ yamlMode ? formatAsYaml(selectedLog.response_headers) : compactJSON(selectedLog.response_headers) }}</code></pre>
+                                    <pre><code :class="formattedResponseHeaders.language" v-text="formattedResponseHeaders.content"></code></pre>
                                 </div>
                             </div>
 
@@ -183,11 +182,11 @@
                                     </div>
                                 </div>
                                 <div v-if="selectedLog.response_body && !responseBodyCollapsed" class="log-section-content">
-                                    <pre><code ref="responseBodyCode" :class="getResponseBodyLanguage()">{{ getResponseBodyContent() }}</code></pre>
+                                    <pre><code ref="responseBodyCode" :class="formattedResponse.language" v-text="formattedResponse.content"></code></pre>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Keyboard navigation legend -->
                         <div class="modal-legend">
                             <div class="legend-item">
@@ -219,7 +218,6 @@
                 </div>
             </div>
 
-            
             <!-- Table listings legend - Page footer -->
             <div class="table-legend">
                 <div class="legend-item">
@@ -288,7 +286,6 @@
                     svgCopy: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>',
                     svgChevronDown: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>',
                     svgChevronRight: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>',
-                    svgYaml: '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" /></svg>',
                 }
             },
             computed: {
@@ -300,7 +297,7 @@
                         return this.models.data
                     }
                     const searchText = this.searchFilter.toLowerCase()
-                    
+
                     // Get models with fuzzy match scores
                     const matchedModels = this.models.data
                         .map(model => ({
@@ -310,7 +307,7 @@
                         .filter(item => item.score > 0)
                         .sort((a, b) => b.score - a.score) // Sort by score descending
                         .map(item => item.model)
-                    
+
                     return matchedModels
                 },
                 logsWithMarkers() {
@@ -324,6 +321,18 @@
                         result.push(log)
                     }
                     return result
+                },
+                formattedRequestHeaders() {
+                    return this.formatSection(this.selectedLog?.request_headers, this.compactJSON)
+                },
+                formattedRequestBody() {
+                    return this.formatSection(this.selectedLog?.request_body, this.compactJSON)
+                },
+                formattedResponseHeaders() {
+                    return this.formatSection(this.selectedLog?.response_headers, this.compactJSON)
+                },
+                formattedResponse() {
+                    return this.formatSection(this.selectedLog?.response_body, this.compactJSON)
                 }
             },
             watch: {
@@ -548,7 +557,7 @@
                         this.modelFilter = '' // Reset display filter
                         this.searchFilter = '' // Reset search filter
                         history.pushState({ showmodal: true }, '', `#models`)
-                        
+
                         // Auto-focus on search box after modal is rendered
                         this.$nextTick(() => {
                             const searchInput = document.querySelector('.modal-model-filter-input')
@@ -638,14 +647,6 @@
 
                     return timestamp
                 },
-                prettyJSON(str) {
-                    try {
-                        const obj = JSON.parse(str)
-                        return JSON.stringify(obj, null, 1)
-                    } catch (e) {
-                        return str
-                    }
-                },
                 compactJSON(str) {
                     try {
                         const obj = JSON.parse(str)
@@ -657,10 +658,10 @@
                 formatCompactJSON(obj, depth = 0) {
                     const indent = ' '.repeat(depth)
                     const nextIndent = ' '.repeat(depth + 1)
-                    
+
                     if (obj === null) return 'null'
                     if (typeof obj !== 'object') return JSON.stringify(obj)
-                    
+
                     if (Array.isArray(obj)) {
                         // Single-line arrays for simple values
                         if (obj.length <= 3 && obj.every(item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')) {
@@ -670,19 +671,19 @@
                         const items = obj.map(item => nextIndent + this.formatCompactJSON(item, depth + 1))
                         return '[\n' + items.join(',\n') + '\n' + indent + ']'
                     }
-                    
+
                     // Objects
                     const entries = Object.entries(obj)
                     if (entries.length === 0) return '{}'
-                    
+
                     // Single-line objects for simple key-value pairs
-                    if (entries.length <= 2 && entries.every(([k, v]) => 
-                        typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || 
+                    if (entries.length <= 2 && entries.every(([k, v]) =>
+                        typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ||
                         (Array.isArray(v) && v.length === 1 && typeof v[0] === 'string')
                     )) {
                         return JSON.stringify(obj)
                     }
-                    
+
                     // Multi-line objects
                     const pairs = entries.map(([key, value]) => {
                         const formattedValue = this.formatCompactJSON(value, depth + 1)
@@ -705,7 +706,7 @@
                         if (input == null) {
                             return ''
                         }
-                        
+
                         let obj
                         // Check if input is already an object/array
                         if (typeof input === 'object') {
@@ -721,7 +722,7 @@
                             // For other types, convert to string
                             return String(input)
                         }
-                        
+
                         return this.objectToYaml(obj, 0)
                     } catch (e) {
                         console.warn('Failed to parse JSON for YAML conversion:', e, 'Input:', input)
@@ -731,7 +732,7 @@
                 },
                 objectToYaml(obj, depth = 0) {
                     const indent = '  '.repeat(depth)
-                    
+
                     if (obj === null) return 'null'
                     if (typeof obj === 'string') {
                         // Handle multiline strings and strings with line breaks
@@ -741,7 +742,7 @@
                         return JSON.stringify(obj)
                     }
                     if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj)
-                    
+
                     if (Array.isArray(obj)) {
                         if (obj.length === 0) return '[]'
                         return obj.map(item => {
@@ -752,82 +753,21 @@
                             return indent + '- ' + yamlItem
                         }).join('\n')
                     }
-                    
+
                     if (typeof obj === 'object') {
                         const entries = Object.entries(obj)
                         if (entries.length === 0) return '{}'
-                        
+
                         return entries.map(([key, value]) => {
-                            const yamlValue = this.objectToYaml(value, depth + 1)
-                            if (typeof value === 'object' && value !== null) {
-                                if (Array.isArray(value) && value.length > 0) {
-                                    return indent + key + ':\n' + yamlValue.split('\n').map(line => '  ' + line).join('\n')
-                                } else if (!Array.isArray(value) && Object.keys(value).length > 0) {
-                                    return indent + key + ':\n' + yamlValue.split('\n').map(line => '  ' + line).join('\n')
-                                }
+                            const yamlValue = this.objectToYaml(value, depth + 1);
+                            if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+                                return `${indent}${key}:\n${yamlValue.split('\n').map(line => '  ' + line).join('\n')}`;
                             }
-                            return indent + key + ': ' + yamlValue
-                        }).join('\n')
+                            return `${indent}${key}: ${yamlValue}`;
+                        }).join('\n');
                     }
-                    
+
                     return String(obj)
-                },
-                getResponseBodyContent() {
-                    if (!this.selectedLog?.response_body) return ''
-                    
-                    // Handle YAML formatting - try for all formats
-                    if (this.yamlMode) {
-                        const yamlResult = this.formatAsYaml(this.selectedLog.response_body)
-                        // If YAML conversion was successful (not just a fallback string), use it
-                        if (yamlResult && yamlResult !== String(this.selectedLog.response_body)) {
-                            return yamlResult
-                        }
-                        // If YAML conversion failed, fall back to JSON formatting below
-                    }
-                    
-                    // Handle JSON formatting
-                    if (typeof this.selectedLog.response_body === 'object') {
-                        // It's already an object, stringify it with formatting
-                        return JSON.stringify(this.selectedLog.response_body, null, 1)
-                    } else {
-                        // It's a string, use prettyJSON to parse and format
-                        return this.prettyJSON(this.selectedLog.response_body)
-                    }
-                },
-                getResponseBodyLanguage() {
-                    if (!this.selectedLog?.response_body) return 'language-json'
-                    
-                    // Use YAML syntax highlighting when in YAML mode and conversion is successful
-                    if (this.yamlMode) {
-                        const yamlResult = this.formatAsYaml(this.selectedLog.response_body)
-                        // If YAML conversion was successful (not just a fallback string), use YAML highlighting
-                        if (yamlResult && yamlResult !== String(this.selectedLog.response_body)) {
-                            return 'language-yaml'
-                        }
-                        // If YAML conversion failed, fall back to JSON or text
-                        if (typeof this.selectedLog.response_body === 'string') {
-                            try {
-                                JSON.parse(this.selectedLog.response_body)
-                                return 'language-json'
-                            } catch (e) {
-                                return 'language-text'
-                            }
-                        }
-                    }
-                    
-                    return 'language-json'
-                },
-                isSimpleObject(obj) {
-                    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
-                        return false
-                    }
-                    // Check if all values are primitives (strings, numbers, booleans)
-                    return Object.values(obj).every(value => 
-                        typeof value === 'string' || 
-                        typeof value === 'number' || 
-                        typeof value === 'boolean' ||
-                        value === null
-                    )
                 },
                 toggleResponseBody(e) {
                     if (!this.selectedLog._responseBodyHasChunks) return
@@ -866,7 +806,7 @@
                 copyToClipboard(field, e) {
                     let textToCopy = '';
                     let targetElement = null;
-                    
+
                     if (field && this.selectedLog[field]) {
                         // Copy from data object
                         textToCopy = this.prettyJSON(this.selectedLog[field]);
@@ -1030,7 +970,7 @@
                             return
                         }
                     }
-                    
+
                     // YAML toggle works in both listings and detail modal
                     if ((inListings || this.selectedLog) && e.key === 'y') {
                         e.preventDefault()
@@ -1052,19 +992,19 @@
                 fuzzyScore(text, pattern) {
                     if (!pattern) return 1;
                     if (!text) return 0;
-                    
+
                     const textLower = text.toLowerCase();
                     const patternLower = pattern.toLowerCase();
-                    
+
                     // Exact match gets highest score
                     if (textLower === patternLower) return 1000;
-                    
+
                     // Starts with pattern gets high score
                     if (textLower.startsWith(patternLower)) return 900;
-                    
+
                     // Contains pattern as substring gets good score
                     if (textLower.includes(patternLower)) return 800;
-                    
+
                     // Split pattern by spaces and match each word separately
                     const patternWords = patternLower.split(/\s+/).filter(w => w.length > 0);
                     if (patternWords.length > 1) {
@@ -1076,43 +1016,43 @@
                         }
                         return totalScore / patternWords.length; // Average score
                     }
-                    
+
                     // Single word fuzzy matching
                     // Split text into words (by spaces, hyphens, dots, underscores)
                     const textWords = textLower.split(/[\s\-\._]+/);
-                    
+
                     // Check if pattern matches any word start
                     for (const word of textWords) {
                         if (word.startsWith(patternLower)) {
                             return 700; // High score for word start match
                         }
                     }
-                    
+
                     // Check if pattern is contained in any word
                     for (const word of textWords) {
                         if (word.includes(patternLower)) {
                             return 600; // Good score for word contains
                         }
                     }
-                    
+
                     // Fuzzy matching - characters in sequence but not necessarily consecutive
                     let textIndex = 0;
                     let score = 0;
                     let consecutiveMatches = 0;
                     let lastMatchIndex = -1;
                     let wordBoundaryBonus = 0;
-                    
+
                     for (let i = 0; i < patternLower.length; i++) {
                         const char = patternLower[i];
                         const foundIndex = textLower.indexOf(char, textIndex);
-                        
+
                         if (foundIndex === -1) {
                             return 0; // Character not found, no match
                         }
-                        
+
                         // Base score for finding the character
                         score += 10;
-                        
+
                         // Bonus for consecutive characters
                         if (foundIndex === lastMatchIndex + 1) {
                             consecutiveMatches++;
@@ -1120,25 +1060,25 @@
                         } else {
                             consecutiveMatches = 0;
                         }
-                        
+
                         // Bonus for characters at word boundaries
                         if (foundIndex === 0 || /[\s\-\._]/.test(textLower[foundIndex - 1])) {
                             wordBoundaryBonus += 15;
                         }
-                        
+
                         // Bonus for early matches (characters found near the beginning)
                         score += Math.max(0, 10 - foundIndex);
-                        
+
                         textIndex = foundIndex + 1;
                         lastMatchIndex = foundIndex;
                     }
-                    
+
                     score += wordBoundaryBonus;
-                    
+
                     // Bonus for matching all characters with fewer gaps
                     const efficiency = patternLower.length / (lastMatchIndex - textLower.indexOf(patternLower[0]) + 1);
                     score += efficiency * 20;
-                    
+
                     return score;
                 },
                 highlightMatch(text, filter) {
@@ -1146,7 +1086,7 @@
 
                     const textLower = text.toLowerCase()
                     const filterLower = filter.toLowerCase()
-                    
+
                     // Handle multi-word searches
                     const filterWords = filterLower.split(/\s+/).filter(w => w.length > 0);
                     if (filterWords.length > 1) {
@@ -1156,40 +1096,40 @@
                         }
                         return result;
                     }
-                    
+
                     // For exact substring matches, use the original highlighting
                     if (textLower.includes(filterLower)) {
                         const regex = new RegExp(`(${this.escapeRegex(filter)})`, 'gi')
                         return text.replace(regex, '<span class="highlight">$1</span>')
                     }
-                    
+
                     // Check for word-level matches first
                     const textWords = text.split(/(\s+|[\-\._]+)/); // Keep separators
                     let hasWordMatch = false;
-                    
+
                     for (let i = 0; i < textWords.length; i++) {
                         const word = textWords[i];
                         const wordLower = word.toLowerCase();
-                        
+
                         if (wordLower.startsWith(filterLower) || wordLower.includes(filterLower)) {
                             const regex = new RegExp(`(${this.escapeRegex(filter)})`, 'gi');
                             textWords[i] = word.replace(regex, '<span class="highlight">$1</span>');
                             hasWordMatch = true;
                         }
                     }
-                    
+
                     if (hasWordMatch) {
                         return textWords.join('');
                     }
-                    
+
                     // For fuzzy matches, highlight individual matching characters
                     let result = ''
                     let filterIndex = 0
-                    
+
                     for (let i = 0; i < text.length; i++) {
                         const char = text[i]
                         const charLower = char.toLowerCase()
-                        
+
                         if (filterIndex < filterLower.length && charLower === filterLower[filterIndex]) {
                             result += `<span class="highlight">${char}</span>`
                             filterIndex++
@@ -1197,7 +1137,7 @@
                             result += char
                         }
                     }
-                    
+
                     return result
                 },
                 escapeRegex(string) {
@@ -1247,23 +1187,6 @@
                         }
                     })
                 },
-                toggleFocusedSection() {
-                    const sectionName = this.detailSections[this.focusedSectionIndex]
-                    switch (sectionName) {
-                        case 'request_headers':
-                            this.toggleRequestHeaders()
-                            break
-                        case 'request_body':
-                            this.toggleRequestBody()
-                            break
-                        case 'response_headers':
-                            this.toggleResponseHeaders()
-                            break
-                        case 'response_body':
-                            this.toggleResponseBodyCollapse()
-                            break
-                    }
-                },
                 expandFocusedSection() {
                     const sectionName = this.detailSections[this.focusedSectionIndex]
                     switch (sectionName) {
@@ -1311,6 +1234,16 @@
                             })
                             .catch(err => console.error('Error copying text: ', err))
                     }
+                },
+                formatSection(sectionValue, jsonFormatter = this.prettyJSON) {
+                    if (!sectionValue) return { content: '', language: 'language-json' }
+                    if (this.yamlMode) {
+                        const yaml = this.formatAsYaml(sectionValue)
+                        if (yaml && yaml !== String(sectionValue)) {
+                            return { content: yaml, language: 'language-yaml' }
+                        }
+                    }
+                    return { content: jsonFormatter(sectionValue), language: 'language-json' }
                 }
             },
             mounted() {
