@@ -454,6 +454,11 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 	// log initial request
 	startTime := time.Now()
 	reqHeadersJSON, _ := json.Marshal(r.Header)
+	userAgent := r.UserAgent()
+	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		userAgent = fmt.Sprintf("(%s) %s", strings.TrimSpace(h[7:]), userAgent)
+	}
+
 	entry := LogEntry{
 		Timestamp:       startTime.UTC().Format(time.RFC3339),
 		Provider:        provider,
@@ -463,7 +468,7 @@ func (s *ProxyServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		RequestHeaders:  string(reqHeadersJSON),
 		RequestBody:     string(bodyBytes),
 		RequestBodySize: len(bodyBytes),
-		UserAgent:       r.UserAgent(),
+		UserAgent:       userAgent,
 	}
 
 	id, err := s.insertLogRequest(entry)
