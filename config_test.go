@@ -1,55 +1,53 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // TestNewModelStructure tests the new model configuration structure
 func TestNewModelStructure(t *testing.T) {
 	tests := []struct {
 		name           string
-		configJSON     string
+		configYAML     string
 		expectedModels []string
 		expectedParams map[string]map[string]interface{}
 	}{
 		{
 			name: "simple models without parameters",
-			configJSON: `{
-				"providers": {
-					"test": {
-						"baseurl": "http://test.com",
-						"models": ["model1", "model2"]
-					}
-				}
-			}`,
+			configYAML: `
+providers:
+  test:
+    baseurl: http://test.com
+    models:
+      - model1
+      - model2
+`,
 			expectedModels: []string{"model1", "model2"},
 			expectedParams: nil,
 		},
 		{
 			name: "models with parameters",
-			configJSON: `{
-				"providers": {
-					"test": {
-						"baseurl": "http://test.com",
-						"models": ["thinking-model", "creative-model"],
-						"modelparams": {
-							"thinking-model": {
-								"think": true,
-								"temperature": 0.7
-							},
-							"creative-model": {
-								"think": false,
-								"temperature": 1.2,
-								"top_p": 0.9
-							}
-						}
-					}
-				}
-			}`,
+			configYAML: `
+providers:
+  test:
+    baseurl: http://test.com
+    models:
+      - thinking-model
+      - creative-model
+    modelparams:
+      thinking-model:
+        think: true
+        temperature: 0.7
+      creative-model:
+        think: false
+        temperature: 1.2
+        top_p: 0.9
+`,
 			expectedModels: []string{"thinking-model", "creative-model"},
 			expectedParams: map[string]map[string]interface{}{
 				"thinking-model": {
@@ -68,7 +66,7 @@ func TestNewModelStructure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var config Config
-			err := json.Unmarshal([]byte(tt.configJSON), &config)
+			err := yaml.Unmarshal([]byte(tt.configYAML), &config)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 				return
@@ -133,29 +131,27 @@ func TestProviderConfig_IsEnabled(t *testing.T) {
 func TestConfigParsing(t *testing.T) {
 	tests := []struct {
 		name       string
-		configJSON string
+		configYAML string
 		wantErr    bool
 		validate   func(*testing.T, *Config)
 	}{
 		{
 			name: "mixed model configurations",
-			configJSON: `{
-				"host": "localhost",
-				"port": 5050,
-				"providers": {
-					"test_provider": {
-						"baseUrl": "http://localhost:11434/v1",
-						"apikey": "test-key",
-						"models": ["simple-model", "thinking-model"],
-						"modelparams": {
-							"thinking-model": {
-								"think": true,
-								"temperature": 0.7
-							}
-						}
-					}
-				}
-			}`,
+			configYAML: `
+host: localhost
+port: 5050
+providers:
+  test_provider:
+    baseurl: http://localhost:11434/v1
+    apikey: test-key
+    models:
+      - simple-model
+      - thinking-model
+    modelparams:
+      thinking-model:
+        think: true
+        temperature: 0.7
+`,
 			wantErr: false,
 			validate: func(t *testing.T, config *Config) {
 				provider := config.Providers["test_provider"]
@@ -193,14 +189,15 @@ func TestConfigParsing(t *testing.T) {
 		},
 		{
 			name: "legacy string array models",
-			configJSON: `{
-				"providers": {
-					"legacy_provider": {
-						"baseUrl": "http://localhost:11434/v1",
-						"models": ["model1", "model2", "model3"]
-					}
-				}
-			}`,
+			configYAML: `
+providers:
+  legacy_provider:
+    baseurl: http://localhost:11434/v1
+    models:
+      - model1
+      - model2
+      - model3
+`,
 			wantErr: false,
 			validate: func(t *testing.T, config *Config) {
 				provider := config.Providers["legacy_provider"]
@@ -229,9 +226,9 @@ func TestConfigParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temporary config file
 			tmpDir := t.TempDir()
-			configFile := filepath.Join(tmpDir, "test_config.json")
+			configFile := filepath.Join(tmpDir, "test_config.yml")
 
-			err := os.WriteFile(configFile, []byte(tt.configJSON), 0644)
+			err := os.WriteFile(configFile, []byte(tt.configYAML), 0644)
 			if err != nil {
 				t.Fatalf("failed to write test config file: %v", err)
 			}
@@ -269,7 +266,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	// Set to a non-existent path to ensure no config file is found
 	tempDir := t.TempDir()
-	nonExistentPath := filepath.Join(tempDir, "nonexistent.json")
+	nonExistentPath := filepath.Join(tempDir, "nonexistent.yml")
 
 	os.Setenv("LLMSEE_CONFIGFILE", nonExistentPath)
 	os.Setenv("LLMSEE_HOST", "")
@@ -307,41 +304,41 @@ func TestDefaultConfig(t *testing.T) {
 func TestCLIPortOverride(t *testing.T) {
 	tests := []struct {
 		name         string
-		configJSON   string
+		configYAML   string
 		cliArgs      []string
 		expectedPort int
 	}{
 		{
 			name: "CLI port overrides config file port",
-			configJSON: `{
-				"port": 8080,
-				"providers": {}
-			}`,
+			configYAML: `
+port: 8080
+providers: {}
+`,
 			cliArgs:      []string{"-p", "9090"},
 			expectedPort: 9090,
 		},
 		{
 			name: "CLI port overrides default port",
-			configJSON: `{
-				"providers": {}
-			}`,
+			configYAML: `
+providers: {}
+`,
 			cliArgs:      []string{"-p", "7070"},
 			expectedPort: 7070,
 		},
 		{
 			name: "No CLI port uses config file port",
-			configJSON: `{
-				"port": 6060,
-				"providers": {}
-			}`,
+			configYAML: `
+port: 6060
+providers: {}
+`,
 			cliArgs:      []string{},
 			expectedPort: 6060,
 		},
 		{
 			name: "No CLI port and no config port uses default",
-			configJSON: `{
-				"providers": {}
-			}`,
+			configYAML: `
+providers: {}
+`,
 			cliArgs:      []string{},
 			expectedPort: 5050, // default port
 		},
@@ -351,9 +348,9 @@ func TestCLIPortOverride(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temporary config file
 			tmpDir := t.TempDir()
-			configFile := filepath.Join(tmpDir, "test_config.json")
+			configFile := filepath.Join(tmpDir, "test_config.yml")
 
-			err := os.WriteFile(configFile, []byte(tt.configJSON), 0644)
+			err := os.WriteFile(configFile, []byte(tt.configYAML), 0644)
 			if err != nil {
 				t.Fatalf("failed to write test config file: %v", err)
 			}
@@ -398,17 +395,17 @@ func TestParseCLIArgs(t *testing.T) {
 	}{
 		{
 			name: "config file and port",
-			args: []string{"-c", "/path/to/config.json", "-p", "8080"},
+			args: []string{"-c", "/path/to/config.yml", "-p", "8080"},
 			expected: CLIArgs{
-				ConfigFile: "/path/to/config.json",
+				ConfigFile: "/path/to/config.yml",
 				Port:       8080,
 			},
 		},
 		{
 			name: "only config file",
-			args: []string{"-c", "/path/to/config.json"},
+			args: []string{"-c", "/path/to/config.yml"},
 			expected: CLIArgs{
-				ConfigFile: "/path/to/config.json",
+				ConfigFile: "/path/to/config.yml",
 				Port:       0,
 			},
 		},

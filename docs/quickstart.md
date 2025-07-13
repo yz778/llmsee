@@ -21,18 +21,14 @@ docker run -p 5050:5050 -v $(pwd)/data:/data llmsee
 
 1. **Create Configuration File**
    
-   Create `~/.config/llmsee.json`:
-   ```json
-   {
-     "host": "localhost",
-     "port": 5050,
-     "providers": {
-       "ollama": {
-         "baseUrl": "http://localhost:11434/v1",
-         "apikey": ""
-       }
-     }
-   }
+   Create `~/.config/llmsee.yml`:
+   ```yaml
+   host: localhost
+   port: 5050
+   providers:
+     ollama:
+       baseurl: http://localhost:11434/v1
+       apikey: ""
    ```
 
 2. **Start LLMSee**
@@ -57,9 +53,9 @@ docker run -p 5050:5050 -v $(pwd)/data:/data llmsee
 ## Command Line Options
 
 ```bash
-llmsee -c /path/to/config.json    # Custom config file
+llmsee -c /path/to/config.yml     # Custom config file
 llmsee -p 8080                    # Override port
-llmsee -c config.json -p 9090     # Both options
+llmsee -c config.yml -p 9090      # Both options
 ```
 
 ## Next Steps
