@@ -27,10 +27,17 @@ type ProxyServer struct {
 }
 
 // NewProxyServer initializes the proxy server
-func NewProxyServer() (*ProxyServer, error) {
-	config, err := getConfig()
-	if err != nil {
-		return nil, err
+func NewProxyServer(cfg ...*Config) (*ProxyServer, error) {
+	var config *Config
+	var err error
+
+	if len(cfg) > 0 && cfg[0] != nil {
+		config = cfg[0]
+	} else {
+		config, err = getConfig()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	db, err := getDb(config.DatabaseFile)
@@ -95,13 +102,8 @@ func main() {
 		}
 	}()
 
-	// Create a context that can be cancelled
-	// Create a context for the application lifecycle
-	appCtx, cancelApp := context.WithCancel(context.Background())
-	defer cancelApp()
-
 	// Start the config file watcher
-	go server.watchConfig(appCtx)
+	go server.watchConfig(context.Background())
 
 	// Wait before proceeding to check if coroutine fails
 	time.Sleep(100 * time.Millisecond)

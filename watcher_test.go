@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -23,19 +24,20 @@ func TestWatchConfig(t *testing.T) {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
+	// Create a dummy config
+	config := &Config{
+		Port:         1234,
+		DatabaseFile: "", // disable database for this test
+	}
+
 	// Create a mock ProxyServer
-	server, err := NewProxyServer()
+	server, err := NewProxyServer(config)
 	if err != nil {
 		t.Fatalf("Failed to create proxy server: %v", err)
 	}
 
-	// Override the config file path
-	os.Setenv("LLMSEE_CONFIGFILE", configFile)
-	config, err := getConfig()
-	if err != nil {
-		t.Fatalf("Failed to get config: %v", err)
-	}
-	server.config = *config
+	// Set the config file path for the watcher
+	t.Setenv("LLMSEE_CONFIGFILE", configFile)
 
 	// Create a context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -53,16 +55,23 @@ func TestWatchConfig(t *testing.T) {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
-	// Wait for the config to be reloaded
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the config to be reloaded by polling
+	var newPort int
+	var reloaded bool
+	for i := 0; i < 200; i++ { // Poll for up to 2 seconds
+		server.mu.RLock()
+		newPort = server.config.Port
+		server.mu.RUnlock()
+		if newPort == 5678 {
+			reloaded = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
-	// Check if the config was reloaded
-	server.mu.RLock()
-	newPort := server.config.Port
-	server.mu.RUnlock()
-
-	if newPort != 5678 {
-		t.Errorf("Expected port to be 5678, but got %d", newPort)
+	if !reloaded {
+		t.Logf("Final port value: %d", newPort)
+		t.Fatalf("timed out waiting for config to be reloaded. Expected port 5678, got %d", newPort)
 	}
 
 	// Check if an SSE event was sent
