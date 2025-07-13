@@ -16,6 +16,14 @@
 
 <body>
     <div id="app">
+        <!-- Config reload notification -->
+        <div v-if="configReloadNotification" class="config-notification">
+            <div class="config-notification-content">
+                <span>Configuration reloaded</span>
+                <button @click="configReloadNotification = false" class="config-notification-close">×</button>
+            </div>
+        </div>
+
         <div class="container">
             <section v-if="!loading">
                 <div id="controls">
@@ -265,6 +273,7 @@
                     isRenderingBody: false,
                     sse: null,
                     sseRetries: 0,
+                    configReloadNotification: false,
                     models: null,
                     modelFilter: '',
                     searchFilter: '',
@@ -595,6 +604,11 @@
                                     this.logs[index] = data.entry
                                 }
                                 break
+
+                            case "config_reload":
+                                // Show notification to user about config reload
+                                this.showConfigReloadNotification()
+                                break
                         }
                     }
 
@@ -606,6 +620,13 @@
                             this.initSSE()
                         }, delay)
                     }
+                },
+                showConfigReloadNotification() {
+                    this.configReloadNotification = true
+                    // Auto-hide notification after 5 seconds
+                    setTimeout(() => {
+                        this.configReloadNotification = false
+                    }, 5000)
                 },
                 closeModal() {
                     if (this.showingModal()) {

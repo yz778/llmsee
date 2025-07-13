@@ -25,6 +25,14 @@ var (
 	modelDataMutex  sync.RWMutex
 )
 
+// clearModelCache clears the cached model data to force re-fetching
+func (s *ProxyServer) clearModelCache() {
+	modelDataMutex.Lock()
+	globalModelJSON = nil
+	modelDataMutex.Unlock()
+	log.Println("Model cache cleared")
+}
+
 // parseProvider splits the URL path to determine the provider and remaining path
 func parseProvider(r *http.Request) (provider, remainingPath string) {
 	path := strings.Trim(r.URL.Path, "/")

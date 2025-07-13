@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	
 	"fmt"
 	"log"
 	"net/http"
@@ -24,11 +25,16 @@ type ProxyServer struct {
 	mu             sync.RWMutex
 	client         *http.Client
 	clientChannels map[string]*SSEClient
+	configWatcher  *ConfigWatcher
+	configFile     string
 }
 
 // NewProxyServer initializes the proxy server
 func NewProxyServer() (*ProxyServer, error) {
-	config, err := getConfig()
+	cliArgs := parseCLIArgs()
+	configFilePath := findConfigFile(cliArgs.ConfigFile)
+
+	config, err := getConfig(configFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -47,13 +53,26 @@ func NewProxyServer() (*ProxyServer, error) {
 		},
 	}
 
-	return &ProxyServer{
+	server := &ProxyServer{
 		devMode:        os.Getenv("APP_ENV") == "dev",
 		config:         *config,
 		db:             db,
 		client:         client,
 		clientChannels: make(map[string]*SSEClient),
-	}, nil
+		configFile:     configFilePath, // Use the determined config file path here
+	}
+
+	// Initialize config watcher if we have a config file
+	if configFilePath != "" {
+		configWatcher, err := NewConfigWatcher(server, configFilePath)
+		if err != nil {
+			log.Printf("Failed to create config watcher: %v", err)
+		} else {
+			server.configWatcher = configWatcher
+		}
+	}
+
+	return server, nil
 }
 
 // main function starts the server
@@ -88,6 +107,13 @@ func main() {
 		MaxHeaderBytes: httpMaxHeaderBytes,
 	}
 
+	// Start config watcher if available
+	if server.configWatcher != nil {
+		if err := server.configWatcher.Start(); err != nil {
+			log.Printf("Failed to start config watcher: %v", err)
+		}
+	}
+
 	// Start server in a goroutine
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -110,6 +136,11 @@ func main() {
 	log.Println("Shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+
+	// Stop config watcher
+	if server.configWatcher != nil {
+		server.configWatcher.Stop()
+	}
 
 	// Stop all SSE
 	server.gracefulShutdownSSE()

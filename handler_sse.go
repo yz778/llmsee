@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	// "time" // Removed: Not used for direct time operations in this file
 
 	"github.com/google/uuid"
 )
@@ -12,7 +13,7 @@ import (
 type SSEClient struct {
 	id     string
 	events chan ServerUpdate
-	done   chan struct{}
+	done   chan struct{} // Closed when client disconnects
 }
 
 type ServerUpdate struct {
@@ -32,6 +33,7 @@ func (s *ProxyServer) sendSSEUpdate(update ServerUpdate) {
 	for _, client := range s.clientChannels {
 		select {
 		case <-client.done:
+			// Client already disconnected, do nothing (will be cleaned up by handleSse's defer)
 			continue
 		case client.events <- update:
 			// Successfully sent
@@ -41,18 +43,18 @@ func (s *ProxyServer) sendSSEUpdate(update ServerUpdate) {
 	}
 }
 
-// handle SSE
+// handleSse handles Server-Sent Events requests
 func (s *ProxyServer) handleSse(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Transfer-Encoding", "chunked")
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Added for CORS
 
 	client := &SSEClient{
 		id:     generateClientID(),
@@ -65,19 +67,24 @@ func (s *ProxyServer) handleSse(w http.ResponseWriter, r *http.Request) {
 	s.clientChannels[client.id] = client
 	s.mu.Unlock()
 
-	// Clean up on disconnect
 	defer func() {
 		s.mu.Lock()
 		if client, ok := s.clientChannels[client.id]; ok {
 			close(client.done)   // Signal all goroutines to stop
-			close(client.events) // Close events channel
+			// Do NOT close client.events here. It might be read by other goroutines if not handled carefully.
+			// The event loop in handleSse will stop when context is done or client.done is closed.
 			delete(s.clientChannels, client.id)
 		}
 		s.mu.Unlock()
 	}()
 
-	// Send initial connection message
-	fmt.Fprintf(w, "data: {\"eventType\": \"init\", \"clientID\": \"%s\"}\n\n", client.id)
+	// Send initial "init" event
+	initialEvent, err := json.Marshal(ServerUpdate{EventType: "init"})
+	if err != nil {
+		log.Printf("Error marshalling init event: %v", err)
+		return
+	}
+	fmt.Fprintf(w, "data: %s\n\n", initialEvent)
 	flusher.Flush()
 
 	// Context handling
@@ -86,12 +93,16 @@ func (s *ProxyServer) handleSse(w http.ResponseWriter, r *http.Request) {
 	// Start message pump
 	for {
 		select {
-		case <-ctx.Done():
+		case <-ctx.Done(): // Client disconnected via context cancellation (e.g., browser tab closed)
+			log.Printf("Client %s disconnected from SSE (context done)", client.id)
 			return
-		case <-client.done:
+		case <-client.done: // Client explicitly disconnected (e.g., graceful shutdown)
+			log.Printf("Client %s disconnected from SSE (graceful shutdown)", client.id)
 			return
-		case update, ok := <-client.events:
+		case update, ok := <-client.events: // New event from server
 			if !ok {
+				// Channel closed, graceful exit
+				log.Printf("Client %s events channel closed, exiting SSE loop", client.id)
 				return
 			}
 			jsonData, err := json.Marshal(update)
@@ -107,10 +118,12 @@ func (s *ProxyServer) handleSse(w http.ResponseWriter, r *http.Request) {
 
 func (s *ProxyServer) gracefulShutdownSSE() {
 	s.mu.Lock()
-	for _, client := range s.clientChannels {
-		close(client.done)   // Forcefully close client's done channel to stop the SSE loop
-		close(client.events) // Forcefully close client's events channel
+	defer s.mu.Unlock()
+
+	for id, client := range s.clientChannels {
+		log.Printf("Closing SSE channel for client %s", id)
+		close(client.done)   // Signal client to stop receiving
+		// Do NOT close client.events here. The individual handleSse goroutine is responsible for closing it.
+		delete(s.clientChannels, id) // Remove client from map
 	}
-	s.clientChannels = make(map[string]*SSEClient) // Clear the client list
-	s.mu.Unlock()
 }

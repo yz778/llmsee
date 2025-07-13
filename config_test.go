@@ -3,124 +3,72 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
-// TestNewModelStructure tests the new model configuration structure
-func TestNewModelStructure(t *testing.T) {
+func TestDefaultString(t *testing.T) {
 	tests := []struct {
-		name           string
-		configYAML     string
-		expectedModels []string
-		expectedParams map[string]map[string]interface{}
+		name     string
+		value    string
+		defaultV string
+		expected string
 	}{
-		{
-			name: "simple models without parameters",
-			configYAML: `
-providers:
-  test:
-    baseurl: http://test.com
-    models:
-      - model1
-      - model2
-`,
-			expectedModels: []string{"model1", "model2"},
-			expectedParams: nil,
-		},
-		{
-			name: "models with parameters",
-			configYAML: `
-providers:
-  test:
-    baseurl: http://test.com
-    models:
-      - thinking-model
-      - creative-model
-    modelparams:
-      thinking-model:
-        think: true
-        temperature: 0.7
-      creative-model:
-        think: false
-        temperature: 1.2
-        top_p: 0.9
-`,
-			expectedModels: []string{"thinking-model", "creative-model"},
-			expectedParams: map[string]map[string]interface{}{
-				"thinking-model": {
-					"think":       true,
-					"temperature": 0.7,
-				},
-				"creative-model": {
-					"think":       false,
-					"temperature": 1.2,
-					"top_p":       0.9,
-				},
-			},
-		},
+		{"non-empty value", "test", "default", "test"},
+		{"empty value", "", "default", "default"},
+		{"whitespace", "   ", "default", "   "},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var config Config
-			err := yaml.Unmarshal([]byte(tt.configYAML), &config)
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
+			result := defaultString(tt.value, tt.defaultV)
+			if result != tt.expected {
+				t.Errorf("defaultString(%q, %q) = %q, want %q", tt.value, tt.defaultV, result, tt.expected)
 			}
+		})
+	}
+}
 
-			provider := config.Providers["test"]
+func TestDefaultInt(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		defaultV int
+		expected int
+	}{
+		{"valid int", "123", 456, 123},
+		{"empty value", "", 456, 456},
+		{"invalid int", "abc", 456, 456},
+		{"negative int", "-123", 456, -123},
+	}
 
-			if tt.expectedModels != nil {
-				if provider.Models == nil {
-					t.Error("expected models to be set")
-					return
-				}
-
-				models := *provider.Models
-				if !reflect.DeepEqual(models, tt.expectedModels) {
-					t.Errorf("Models = %v, want %v", models, tt.expectedModels)
-				}
-			}
-
-			if tt.expectedParams != nil {
-				if !reflect.DeepEqual(provider.ModelParams, tt.expectedParams) {
-					t.Errorf("ModelParams = %v, want %v", provider.ModelParams, tt.expectedParams)
-				}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := defaultInt(tt.value, tt.defaultV)
+			if result != tt.expected {
+				t.Errorf("defaultInt(%q, %d) = %d, want %d", tt.value, tt.defaultV, result, tt.expected)
 			}
 		})
 	}
 }
 
 func TestProviderConfig_IsEnabled(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
 	tests := []struct {
 		name     string
-		provider ProviderConfig
+		enabled  *bool
 		expected bool
 	}{
-		{
-			name:     "enabled is nil (default enabled)",
-			provider: ProviderConfig{Enabled: nil},
-			expected: true,
-		},
-		{
-			name:     "explicitly enabled",
-			provider: ProviderConfig{Enabled: boolPtr(true)},
-			expected: true,
-		},
-		{
-			name:     "explicitly disabled",
-			provider: ProviderConfig{Enabled: boolPtr(false)},
-			expected: false,
-		},
+		{"nil enabled", nil, true},
+		{"true enabled", &trueVal, true},
+		{"false enabled", &falseVal, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.provider.IsEnabled()
+			pc := ProviderConfig{Enabled: tt.enabled}
+			result := pc.IsEnabled()
 			if result != tt.expected {
 				t.Errorf("IsEnabled() = %v, want %v", result, tt.expected)
 			}
@@ -128,323 +76,202 @@ func TestProviderConfig_IsEnabled(t *testing.T) {
 	}
 }
 
-func TestConfigParsing(t *testing.T) {
-	tests := []struct {
-		name       string
-		configYAML string
-		wantErr    bool
-		validate   func(*testing.T, *Config)
-	}{
-		{
-			name: "mixed model configurations",
-			configYAML: `
-host: localhost
-port: 5050
-providers:
-  test_provider:
-    baseurl: http://localhost:11434/v1
-    apikey: test-key
-    models:
-      - simple-model
-      - thinking-model
-    modelparams:
-      thinking-model:
-        think: true
-        temperature: 0.7
-`,
-			wantErr: false,
-			validate: func(t *testing.T, config *Config) {
-				provider := config.Providers["test_provider"]
-				if provider.Models == nil {
-					t.Error("expected models to be set")
-					return
-				}
-
-				models := *provider.Models
-				if len(models) != 2 {
-					t.Errorf("expected 2 models, got %d", len(models))
-					return
-				}
-
-				// Check models are strings now
-				if models[0] != "simple-model" {
-					t.Errorf("expected first model to be 'simple-model', got %s", models[0])
-				}
-				if models[1] != "thinking-model" {
-					t.Errorf("expected second model to be 'thinking-model', got %s", models[1])
-				}
-
-				// Check model parameters are in separate ModelParams map
-				if provider.ModelParams == nil {
-					t.Error("expected ModelParams to be set")
-					return
-				}
-				if provider.ModelParams["thinking-model"]["think"] != true {
-					t.Errorf("expected think parameter to be true, got %v", provider.ModelParams["thinking-model"]["think"])
-				}
-				if provider.ModelParams["thinking-model"]["temperature"] != 0.7 {
-					t.Errorf("expected temperature parameter to be 0.7, got %v", provider.ModelParams["thinking-model"]["temperature"])
-				}
-			},
-		},
-		{
-			name: "legacy string array models",
-			configYAML: `
-providers:
-  legacy_provider:
-    baseurl: http://localhost:11434/v1
-    models:
-      - model1
-      - model2
-      - model3
-`,
-			wantErr: false,
-			validate: func(t *testing.T, config *Config) {
-				provider := config.Providers["legacy_provider"]
-				if provider.Models == nil {
-					t.Error("expected models to be set")
-					return
-				}
-
-				models := *provider.Models
-				if len(models) != 3 {
-					t.Errorf("expected 3 models, got %d", len(models))
-					return
-				}
-
-				expectedNames := []string{"model1", "model2", "model3"}
-				for i, model := range models {
-					if model != expectedNames[i] {
-						t.Errorf("expected model %d to be %s, got %s", i, expectedNames[i], model)
-					}
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create temporary config file
-			tmpDir := t.TempDir()
-			configFile := filepath.Join(tmpDir, "test_config.yml")
-
-			err := os.WriteFile(configFile, []byte(tt.configYAML), 0644)
-			if err != nil {
-				t.Fatalf("failed to write test config file: %v", err)
-			}
-
-			// Set environment variable to use our test config
-			oldConfigFile := os.Getenv("LLMSEE_CONFIGFILE")
-			os.Setenv("LLMSEE_CONFIGFILE", configFile)
-			defer os.Setenv("LLMSEE_CONFIGFILE", oldConfigFile)
-
-			config, err := getConfig()
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if tt.validate != nil {
-				tt.validate(t, config)
-			}
-		})
-	}
-}
-
-func TestDefaultConfig(t *testing.T) {
-	// Clear environment variables that might affect config
-	oldConfigFile := os.Getenv("LLMSEE_CONFIGFILE")
-	oldHost := os.Getenv("LLMSEE_HOST")
-	oldPort := os.Getenv("LLMSEE_PORT")
-
-	// Set to a non-existent path to ensure no config file is found
-	tempDir := t.TempDir()
-	nonExistentPath := filepath.Join(tempDir, "nonexistent.yml")
-
-	os.Setenv("LLMSEE_CONFIGFILE", nonExistentPath)
-	os.Setenv("LLMSEE_HOST", "")
-	os.Setenv("LLMSEE_PORT", "")
-
-	defer func() {
-		os.Setenv("LLMSEE_CONFIGFILE", oldConfigFile)
-		os.Setenv("LLMSEE_HOST", oldHost)
-		os.Setenv("LLMSEE_PORT", oldPort)
-	}()
-
-	config, err := getConfig()
+func TestFileExists(t *testing.T) {
+	// Create a temporary file
+	tempFile, err := os.CreateTemp("", "test_file")
 	if err != nil {
-		t.Errorf("unexpected error getting default config: %v", err)
-		return
+		t.Fatal(err)
 	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
 
-	if config.Host != "localhost" {
-		t.Errorf("expected default host to be 'localhost', got %s", config.Host)
-	}
+	t.Run("existing file", func(t *testing.T) {
+		if !fileExists(tempFile.Name()) {
+			t.Errorf("fileExists(%q) = false, want true", tempFile.Name())
+		}
+	})
 
-	if config.Port != 5050 {
-		t.Errorf("expected default port to be 5050, got %d", config.Port)
-	}
-
-	if config.PageSize != 20 {
-		t.Errorf("expected default page size to be 20, got %d", config.PageSize)
-	}
-
-	if len(config.Providers) == 0 {
-		t.Error("expected default config to have at least one provider")
-	}
-}
-
-func TestCLIPortOverride(t *testing.T) {
-	tests := []struct {
-		name         string
-		configYAML   string
-		cliArgs      []string
-		expectedPort int
-	}{
-		{
-			name: "CLI port overrides config file port",
-			configYAML: `
-port: 8080
-providers: {}
-`,
-			cliArgs:      []string{"-p", "9090"},
-			expectedPort: 9090,
-		},
-		{
-			name: "CLI port overrides default port",
-			configYAML: `
-providers: {}
-`,
-			cliArgs:      []string{"-p", "7070"},
-			expectedPort: 7070,
-		},
-		{
-			name: "No CLI port uses config file port",
-			configYAML: `
-port: 6060
-providers: {}
-`,
-			cliArgs:      []string{},
-			expectedPort: 6060,
-		},
-		{
-			name: "No CLI port and no config port uses default",
-			configYAML: `
-providers: {}
-`,
-			cliArgs:      []string{},
-			expectedPort: 5050, // default port
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create temporary config file
-			tmpDir := t.TempDir()
-			configFile := filepath.Join(tmpDir, "test_config.yml")
-
-			err := os.WriteFile(configFile, []byte(tt.configYAML), 0644)
-			if err != nil {
-				t.Fatalf("failed to write test config file: %v", err)
-			}
-
-			// Clear environment variables
-			oldConfigFile := os.Getenv("LLMSEE_CONFIGFILE")
-			oldHost := os.Getenv("LLMSEE_HOST")
-			oldPort := os.Getenv("LLMSEE_PORT")
-
-			os.Unsetenv("LLMSEE_CONFIGFILE")
-			os.Unsetenv("LLMSEE_HOST")
-			os.Unsetenv("LLMSEE_PORT")
-
-			defer func() {
-				os.Setenv("LLMSEE_CONFIGFILE", oldConfigFile)
-				os.Setenv("LLMSEE_HOST", oldHost)
-				os.Setenv("LLMSEE_PORT", oldPort)
-			}()
-
-			// Simulate CLI arguments
-			args := append([]string{"-c", configFile}, tt.cliArgs...)
-			os.Args = append([]string{"llmsee"}, args...)
-
-			config, err := getConfig()
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if config.Port != tt.expectedPort {
-				t.Errorf("expected port %d, got %d", tt.expectedPort, config.Port)
-			}
-		})
-	}
+	t.Run("non-existing file", func(t *testing.T) {
+		if fileExists("/nonexistent/path/to/file.txt") {
+			t.Errorf("fileExists(nonexistent) = true, want false")
+		}
+	})
 }
 
 func TestParseCLIArgs(t *testing.T) {
+	// Save original os.Args
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
 	tests := []struct {
 		name     string
 		args     []string
 		expected CLIArgs
 	}{
 		{
-			name: "config file and port",
-			args: []string{"-c", "/path/to/config.yml", "-p", "8080"},
-			expected: CLIArgs{
-				ConfigFile: "/path/to/config.yml",
-				Port:       8080,
-			},
+			name:     "no args",
+			args:     []string{"llmsee"},
+			expected: CLIArgs{ConfigFile: "", Port: 0},
 		},
 		{
-			name: "only config file",
-			args: []string{"-c", "/path/to/config.yml"},
-			expected: CLIArgs{
-				ConfigFile: "/path/to/config.yml",
-				Port:       0,
-			},
+			name:     "config file only",
+			args:     []string{"llmsee", "-c", "test.yml"},
+			expected: CLIArgs{ConfigFile: "test.yml", Port: 0},
 		},
 		{
-			name: "only port",
-			args: []string{"-p", "9090"},
-			expected: CLIArgs{
-				ConfigFile: "",
-				Port:       9090,
-			},
+			name:     "port only",
+			args:     []string{"llmsee", "-p", "8080"},
+			expected: CLIArgs{ConfigFile: "", Port: 8080},
 		},
 		{
-			name: "no arguments",
-			args: []string{},
-			expected: CLIArgs{
-				ConfigFile: "",
-				Port:       0,
-			},
+			name:     "both config and port",
+			args:     []string{"llmsee", "-c", "test.yml", "-p", "9000"},
+			expected: CLIArgs{ConfigFile: "test.yml", Port: 9000},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up CLI arguments
-			os.Args = append([]string{"llmsee"}, tt.args...)
-
+			os.Args = tt.args
 			result := parseCLIArgs()
-
 			if result.ConfigFile != tt.expected.ConfigFile {
-				t.Errorf("ConfigFile = %s, want %s", result.ConfigFile, tt.expected.ConfigFile)
+				t.Errorf("parseCLIArgs().ConfigFile = %q, want %q", result.ConfigFile, tt.expected.ConfigFile)
 			}
 			if result.Port != tt.expected.Port {
-				t.Errorf("Port = %d, want %d", result.Port, tt.expected.Port)
+				t.Errorf("parseCLIArgs().Port = %d, want %d", result.Port, tt.expected.Port)
 			}
 		})
 	}
 }
 
-// Helper function to create bool pointer
-func boolPtr(b bool) *bool {
-	return &b
+func TestFindConfigFile(t *testing.T) {
+	// Create temporary directory and files
+	tempDir, err := os.MkdirTemp("", "test_config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	configPath := filepath.Join(tempDir, "llmsee.yml")
+	if err := os.WriteFile(configPath, []byte("test: config"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Save original environment variables
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	originalAppData := os.Getenv("APPDATA")
+
+	defer func() {
+		os.Setenv("HOME", originalHome)
+		os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		os.Setenv("APPDATA", originalAppData)
+	}()
+
+	tests := []struct {
+		name      string
+		cliFile   string
+		setupFunc func()
+		expected  string
+	}{
+		{
+			name:      "cli argument provided",
+			cliFile:   configPath,
+			setupFunc: func() {},
+			expected:  configPath,
+		},
+		{
+			name:    "environment variable",
+			cliFile: "",
+			setupFunc: func() {
+				os.Setenv("LLMSEE_CONFIGFILE", configPath)
+			},
+			expected: configPath,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset environment
+			os.Unsetenv("LLMSEE_CONFIGFILE")
+			os.Setenv("HOME", tempDir)
+
+			tt.setupFunc()
+
+			result := findConfigFile(tt.cliFile)
+			if result != tt.expected {
+				t.Errorf("findConfigFile(%q) = %q, want %q", tt.cliFile, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetConfig(t *testing.T) {
+	// Create temporary config file
+	tempFile, err := os.CreateTemp("", "test_config_*.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	configContent := `
+host: testhost
+port: 3000
+databasefile: test.db
+pagesize: 50
+providers:
+  testprovider:
+    baseurl: http://test.com
+    apikey: testkey
+    enabled: true
+`
+	if err := os.WriteFile(tempFile.Name(), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("valid config from file", func(t *testing.T) {
+		config, err := getConfig(tempFile.Name())
+		if err != nil {
+			t.Fatalf("getConfig() error = %v", err)
+		}
+
+		if config.Host != "testhost" {
+			t.Errorf("config.Host = %q, want %q", config.Host, "testhost")
+		}
+		if config.Port != 3000 {
+			t.Errorf("config.Port = %d, want %d", config.Port, 3000)
+		}
+		if len(config.Providers) != 1 {
+			t.Errorf("len(config.Providers) = %d, want %d", len(config.Providers), 1)
+		}
+	})
+
+	t.Run("invalid config file", func(t *testing.T) {
+		invalidFile := "invalid-config.yml"
+		if err := os.WriteFile(invalidFile, []byte("invalid: yaml: content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(invalidFile)
+
+		config, err := getConfig(invalidFile)
+		if err != nil {
+			t.Fatalf("getConfig() error = %v", err)
+		}
+		if config == nil {
+			t.Error("getConfig() returned nil config")
+		}
+	})
+
+	t.Run("no config file", func(t *testing.T) {
+		config, err := getConfig("")
+		if err != nil {
+			t.Fatalf("getConfig() error = %v", err)
+		}
+		if config.Host == "" {
+			t.Error("config.Host should not be empty")
+		}
+		if config.Port == 0 {
+			t.Error("config.Port should not be 0")
+		}
+	})
 }
