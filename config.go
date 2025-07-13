@@ -67,10 +67,12 @@ func defaultString(value, defaultValue string) string {
 func defaultInt(value string, defaultValue int) int {
 	if value == "" {
 		return defaultValue
-	} else {
-		value, _ := strconv.Atoi(value)
-		return value
 	}
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return intValue
 }
 
 var defaultConfig = Config{
@@ -110,41 +112,29 @@ func parseCLIArgs() CLIArgs {
 	return cliArgs
 }
 
-func getConfig() (config *Config, err error) {
+func getConfig(configPath string) (config *Config, err error) {
 	config = &Config{}
 
-	// Parse CLI arguments first
-	cliArgs := parseCLIArgs()
-
-	// Find and load config file
-	configFile := findConfigFile(cliArgs.ConfigFile)
-
-	if configFile != "" {
-		fileConfig, _ := os.ReadFile(configFile)
-		if err := yaml.Unmarshal(fileConfig, &config); err != nil {
-			log.Printf("Config file %s is not valid, skipping", configFile)
+	if configPath != "" {
+		fileConfig, _ := os.ReadFile(configPath)
+		if err = yaml.Unmarshal(fileConfig, &config); err != nil {
+			log.Printf("Config file %s is not valid, skipping", configPath)
 			config = &Config{}
 		} else {
-			log.Printf("Config file %s", configFile)
+			log.Printf("Config file %s", configPath)
 		}
 	}
 
+	// Apply defaults if not set by config file
 	if config.Host == "" {
 		config.Host = defaultConfig.Host
 	}
-
-	// Apply CLI port override if provided, otherwise use config or default
-	if cliArgs.Port > 0 {
-		config.Port = cliArgs.Port
-		log.Printf("Port overridden by CLI argument: %d", cliArgs.Port)
-	} else if config.Port == 0 {
+	if config.Port == 0 {
 		config.Port = defaultConfig.Port
 	}
-
 	if config.DatabaseFile == "" {
 		config.DatabaseFile = getDatabaseFile()
 	}
-
 	if config.PageSize == 0 {
 		config.PageSize = defaultConfig.PageSize
 	}
@@ -155,21 +145,24 @@ func getConfig() (config *Config, err error) {
 	}
 
 	// Ensure default providers exist if not configured
-	for provider, defaultProviderConfig := range defaultConfig.Providers {
+	for provider, initialProviderConfig := range defaultConfig.Providers {
 		if _, exists := config.Providers[provider]; !exists {
-			config.Providers[provider] = defaultProviderConfig
+			config.Providers[provider] = initialProviderConfig
+		}
+		// Special handling for pre-configured Gemini API
+		if strings.HasPrefix(initialProviderConfig.BaseURL, geminiBaseURL) {
+			p := config.Providers[provider]
+			p.IsGemini = true
+			config.Providers[provider] = p
 		}
 	}
 
-	// process providers
-	for provider, providerConfig := range config.Providers {
+	// Iterate over the providers again to handle enabled/disabled logic.
+	// This separate loop is necessary because initial merging of defaults needs to happen first.
+	for providerName, providerConfig := range config.Providers {
 		if !providerConfig.IsEnabled() {
-			delete(config.Providers, provider)
-		}
-
-		if strings.HasPrefix(providerConfig.BaseURL, geminiBaseURL) {
-			providerConfig.IsGemini = true
-			config.Providers[provider] = providerConfig
+			log.Printf("Provider %s is disabled and will be removed.", providerName)
+			delete(config.Providers, providerName)
 		}
 	}
 

@@ -237,3 +237,93 @@ go test ./...  # Works in any CI system
 3. **Clean Up Resources**: Ensure tests don't leave artifacts
 4. **Update Tests**: When changing code, update corresponding tests
 5. **Document Complex Tests**: Add comments for complex test scenarios
+
+## Config File Watcher Tests
+
+### Test Files for Config Watcher Functionality
+
+#### 1. `config_watcher_test.go`
+**Core functionality tests for the config file watcher**
+- `TestNewConfigWatcher` - Tests watcher initialization
+- `TestConfigWatcher_Start` - Tests starting the file watcher  
+- `TestConfigWatcher_StartWithEmptyConfigFile` - Tests empty config handling
+- `TestConfigWatcher_FileChange` - Tests file change detection and reload
+- `TestConfigWatcher_Stop` - Tests graceful shutdown
+- `TestConfigWatcher_HandleEvent` - Tests event filtering
+
+#### 2. `model_cache_test.go`
+**Tests for model cache management during config reloads**
+- `TestClearModelCache` - Tests cache clearing functionality
+- `TestModelCacheAfterConfigReload` - Tests cache rebuild after config changes
+- `TestModelCacheConcurrency` - Tests thread-safe cache operations
+- `TestGetAllModelsWithClearedCache` - Tests model fetching after cache clear
+
+#### 3. `sse_config_test.go`
+**Tests for SSE integration with config reload events**
+- `TestSSEConfigReloadEvent` - Tests config reload SSE event sending
+- `TestSSEConfigReloadMultipleClients` - Tests broadcasting to multiple clients
+- `TestSSEHandlerConfigReloadEvent` - Tests SSE handler integration
+- `TestSSEEventSerialization` - Tests JSON serialization of config events
+- `TestSSEClientBufferFull` - Tests handling of full client buffers
+- `TestSSEClientDisconnected` - Tests handling disconnected clients
+- `TestSSEGracefulShutdownWithConfigWatcher` - Tests cleanup during shutdown
+
+#### 4. `integration_config_watcher_test.go`
+**End-to-end integration tests**
+- `TestIntegration_ConfigWatcherFullWorkflow` - Complete workflow test
+- `TestIntegration_ConfigWatcherWithInvalidConfig` - Tests error handling
+- `TestIntegration_ConfigWatcherModelParameterReload` - Tests model parameter updates
+
+#### 5. `config_watcher_edge_cases_test.go`
+**Edge case and error condition tests**
+- `TestConfigWatcher_NonExistentConfigFile` - Tests missing files
+- `TestConfigWatcher_DirectoryDoesNotExist` - Tests missing directories
+- `TestConfigWatcher_FileDeleteAndRecreate` - Tests file deletion/recreation
+- `TestConfigWatcher_RapidFileChanges` - Tests rapid successive changes
+- `TestConfigWatcher_InvalidEventTypes` - Tests different fsnotify event types
+- `TestConfigWatcher_ConcurrentStopAndReload` - Tests race conditions
+- `TestConfigWatcher_WatcherErrors` - Tests error handling
+
+### Config Watcher Test Coverage
+
+#### File System Operations
+- Config file creation, modification, deletion
+- Directory watching and event filtering
+- Handling of non-existent files and directories
+
+#### Configuration Management
+- Config parsing and validation
+- Provider enable/disable functionality
+- Model parameter updates
+- Error handling for invalid YAML
+
+#### Model Cache Management
+- Cache clearing on config reload
+- Thread-safe cache operations
+- Model list rebuilding with new config
+- Concurrent access testing
+
+#### SSE Event System
+- Config reload event broadcasting
+- Multiple client handling
+- Event serialization and deserialization
+- Buffer overflow and disconnection handling
+
+#### Integration Testing
+- End-to-end workflow validation
+- Real file system operations
+- Complete config reload cycle
+- UI notification verification
+
+#### Error Handling & Edge Cases
+- Invalid configuration files
+- Missing files and directories
+- Rapid file changes
+- Concurrent operations
+- Watcher error conditions
+
+### Config Watcher Test Dependencies
+- `github.com/fsnotify/fsnotify` - File system notifications
+- Standard Go testing package
+- Existing LLMSee test infrastructure
+- Mock HTTP servers for integration tests

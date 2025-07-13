@@ -4,6 +4,7 @@ go 1.24.2
 
 require (
 	github.com/andybalholm/brotli v1.2.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.0
