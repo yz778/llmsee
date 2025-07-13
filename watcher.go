@@ -1,12 +1,6 @@
 package main
 
 import (
-	"log"
-
-	"github.com/fsnotify/fsnotify"
-)
-
-import (
 	"context"
 	"log"
 
