@@ -10,13 +10,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // TestIntegration_ModelParameterApplication tests the end-to-end model parameter application
 func TestIntegration_ModelParameterApplication(t *testing.T) {
 	// Create temporary config and database
 	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "test_config.json")
+	configFile := filepath.Join(tmpDir, "test_config.yml")
 	dbFile := filepath.Join(tmpDir, "test.db")
 
 	// Create test configuration with enhanced models
@@ -27,9 +29,9 @@ func TestIntegration_ModelParameterApplication(t *testing.T) {
 		"pageSize":     15,
 		"providers": map[string]interface{}{
 			"test_provider": map[string]interface{}{
-				"baseUrl": "http://localhost:11434/v1",
+				"baseurl": "http://localhost:11434/v1",
 				"apikey":  "test-key",
-				"models": []string{"simple-model", "thinking-model"},
+				"models":  []string{"simple-model", "thinking-model"},
 				"modelparams": map[string]interface{}{
 					"thinking-model": map[string]interface{}{
 						"think":       true,
@@ -37,15 +39,19 @@ func TestIntegration_ModelParameterApplication(t *testing.T) {
 					},
 				},
 			},
+			"ollama": map[string]interface{}{
+				"baseurl": "http://localhost:11434/v1",
+				"enabled": false,
+			},
 		},
 	}
 
-	configJSON, err := json.Marshal(config)
+	configYAML, err := yaml.Marshal(config)
 	if err != nil {
 		t.Fatalf("failed to marshal config: %v", err)
 	}
 
-	err = os.WriteFile(configFile, configJSON, 0644)
+	err = os.WriteFile(configFile, configYAML, 0644)
 	if err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
@@ -142,7 +148,7 @@ func TestIntegration_ModelParameterApplication(t *testing.T) {
 func TestIntegration_V1ModelsEndpoint(t *testing.T) {
 	// Create temporary config and database
 	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "test_config.json")
+	configFile := filepath.Join(tmpDir, "test_config.yml")
 	dbFile := filepath.Join(tmpDir, "test.db")
 
 	// Create test configuration
@@ -150,8 +156,8 @@ func TestIntegration_V1ModelsEndpoint(t *testing.T) {
 		"databasefile": dbFile,
 		"providers": map[string]interface{}{
 			"provider1": map[string]interface{}{
-				"baseUrl": "http://localhost:11434/v1",
-				"models": []string{"simple-model", "enhanced-model"},
+				"baseurl": "http://localhost:11434/v1",
+				"models":  []string{"simple-model", "enhanced-model"},
 				"modelparams": map[string]interface{}{
 					"enhanced-model": map[string]interface{}{
 						"think":       true,
@@ -160,18 +166,22 @@ func TestIntegration_V1ModelsEndpoint(t *testing.T) {
 				},
 			},
 			"provider2": map[string]interface{}{
-				"baseUrl": "http://localhost:11435/v1",
-				"models": []string{"another-model"},
+				"baseurl": "http://localhost:11435/v1",
+				"models":  []string{"another-model"},
+			},
+			"ollama": map[string]interface{}{
+				"baseurl": "http://localhost:11434/v1",
+				"enabled": false,
 			},
 		},
 	}
 
-	configJSON, err := json.Marshal(config)
+	configYAML, err := yaml.Marshal(config)
 	if err != nil {
 		t.Fatalf("failed to marshal config: %v", err)
 	}
 
-	err = os.WriteFile(configFile, configJSON, 0644)
+	err = os.WriteFile(configFile, configYAML, 0644)
 	if err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
@@ -262,7 +272,7 @@ func TestIntegration_V1ModelsEndpoint(t *testing.T) {
 func TestIntegration_ProviderModelsEndpoint(t *testing.T) {
 	// Create temporary config and database
 	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "test_config.json")
+	configFile := filepath.Join(tmpDir, "test_config.yml")
 	dbFile := filepath.Join(tmpDir, "test.db")
 
 	// Create test configuration
@@ -270,8 +280,8 @@ func TestIntegration_ProviderModelsEndpoint(t *testing.T) {
 		"databasefile": dbFile,
 		"providers": map[string]interface{}{
 			"test_provider": map[string]interface{}{
-				"baseUrl": "http://localhost:11434/v1",
-				"models": []string{"model1", "model2"},
+				"baseurl": "http://localhost:11434/v1",
+				"models":  []string{"model1", "model2"},
 				"modelparams": map[string]interface{}{
 					"model2": map[string]interface{}{
 						"think":  true,
@@ -279,15 +289,19 @@ func TestIntegration_ProviderModelsEndpoint(t *testing.T) {
 					},
 				},
 			},
+			"ollama": map[string]interface{}{
+				"baseurl": "http://localhost:11434/v1",
+				"enabled": false,
+			},
 		},
 	}
 
-	configJSON, err := json.Marshal(config)
+	configYAML, err := yaml.Marshal(config)
 	if err != nil {
 		t.Fatalf("failed to marshal config: %v", err)
 	}
 
-	err = os.WriteFile(configFile, configJSON, 0644)
+	err = os.WriteFile(configFile, configYAML, 0644)
 	if err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
@@ -357,21 +371,26 @@ func TestIntegration_ProviderModelsEndpoint(t *testing.T) {
 func TestIntegration_BackwardCompatibility(t *testing.T) {
 	// Create temporary config and database
 	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "test_config.json")
+	configFile := filepath.Join(tmpDir, "test_config.yml")
 	dbFile := filepath.Join(tmpDir, "test.db")
 
 	// Create legacy configuration (string array models)
-	configJSON := `{
-		"databasefile": "` + strings.ReplaceAll(dbFile, "\\", "\\\\") + `",
-		"providers": {
-			"legacy_provider": {
-				"baseUrl": "http://localhost:11434/v1",
-				"models": ["model1", "model2", "model3"]
-			}
-		}
-	}`
+	configYAML := `
+databasefile: ` + strings.ReplaceAll(dbFile, "\\", "\\\\") + `
+providers:
+  legacy_provider:
+    baseurl: http://localhost:11434/v1
+    models:
+      - model1
+      - model2
+      - model3
+  ollama:
+    baseurl: http://localhost:11434/v1
+    enabled: false
+`
 
-	err := os.WriteFile(configFile, []byte(configJSON), 0644)
+	err := os.WriteFile(configFile, []byte(configYAML), 0644)
+
 	if err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
@@ -435,7 +454,7 @@ func TestIntegration_BackwardCompatibility(t *testing.T) {
 func TestIntegration_RequestLogging(t *testing.T) {
 	// Create temporary config and database
 	tmpDir := t.TempDir()
-	configFile := filepath.Join(tmpDir, "test_config.json")
+	configFile := filepath.Join(tmpDir, "test_config.yml")
 	dbFile := filepath.Join(tmpDir, "test.db")
 
 	// Create test configuration
@@ -443,23 +462,27 @@ func TestIntegration_RequestLogging(t *testing.T) {
 		"databasefile": dbFile,
 		"providers": map[string]interface{}{
 			"test_provider": map[string]interface{}{
-				"baseUrl": "http://localhost:11434/v1",
-				"models": []string{"test-model"},
+				"baseurl": "http://localhost:11434/v1",
+				"models":  []string{"test-model"},
 				"modelparams": map[string]interface{}{
 					"test-model": map[string]interface{}{
 						"temperature": 0.5,
 					},
 				},
 			},
+			"ollama": map[string]interface{}{
+				"baseurl": "http://localhost:11434/v1",
+				"enabled": false,
+			},
 		},
 	}
 
-	configJSON, err := json.Marshal(config)
+	configYAML, err := yaml.Marshal(config)
 	if err != nil {
 		t.Fatalf("failed to marshal config: %v", err)
 	}
 
-	err = os.WriteFile(configFile, configJSON, 0644)
+	err = os.WriteFile(configFile, configYAML, 0644)
 	if err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -10,11 +9,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // System configuration
 const (
-	defaultConfigFile         = "llmsee.json"
+	defaultConfigFile         = "llmsee.yml"
 	clientIdleConnTimeout     = 90 * time.Second // Timeout for idle HTTP client
 	clientMaxIdleConns        = 100              // Max idle connections for HTTP client
 	clientMaxIdleConnsPerHost = 10               // Max idle connections per host for HTTP client
@@ -34,21 +35,21 @@ const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
 
 // Configuration structs
 type Config struct {
-	Host         string                    `json:"host"`
-	Port         int                       `json:"port"`
-	DatabaseFile string                    `json:"databasefile"`
-	PageSize     int                       `json:"pagesize"`
-	Providers    map[string]ProviderConfig `json:"providers"`
+	Host         string                    `yaml:"host"`
+	Port         int                       `yaml:"port"`
+	DatabaseFile string                    `yaml:"databasefile"`
+	PageSize     int                       `yaml:"pagesize"`
+	Providers    map[string]ProviderConfig `yaml:"providers"`
 }
 
 type ProviderConfig struct {
-	BaseURL       string                            `json:"baseurl"`
-	ApiKey        string                            `json:"apikey"`
-	HeaderMapping map[string]string                 `json:"headermapping"`
-	Models        *[]string                         `json:"models"`
-	ModelParams   map[string]map[string]interface{} `json:"modelparams"`
-	Enabled       *bool                             `json:"enabled"`
-	IsGemini      bool                              `json:"-"`
+	BaseURL       string                            `yaml:"baseurl"`
+	ApiKey        string                            `yaml:"apikey"`
+	HeaderMapping map[string]string                 `yaml:"headermapping"`
+	Models        *[]string                         `yaml:"models"`
+	ModelParams   map[string]map[string]interface{} `yaml:"modelparams"`
+	Enabled       *bool                             `yaml:"enabled"`
+	IsGemini      bool                              `yaml:"-"`
 }
 
 func (p *ProviderConfig) IsEnabled() bool {
@@ -95,32 +96,32 @@ type CLIArgs struct {
 // parseCLIArgs parses command line arguments
 func parseCLIArgs() CLIArgs {
 	var cliArgs CLIArgs
-	
+
 	// Use a separate flag set to avoid conflicts with test flags
 	fs := flag.NewFlagSet("llmsee", flag.ContinueOnError)
-	fs.StringVar(&cliArgs.ConfigFile, "c", "", "Path to JSON configuration file")
+	fs.StringVar(&cliArgs.ConfigFile, "c", "", "Path to YAML configuration file")
 	fs.IntVar(&cliArgs.Port, "p", 0, "Port number to override config file setting")
-	
+
 	// Parse using os.Args[1:] to skip the program name
 	if len(os.Args) > 1 {
 		fs.Parse(os.Args[1:])
 	}
-	
+
 	return cliArgs
 }
 
 func getConfig() (config *Config, err error) {
 	config = &Config{}
-	
+
 	// Parse CLI arguments first
 	cliArgs := parseCLIArgs()
-	
+
 	// Find and load config file
 	configFile := findConfigFile(cliArgs.ConfigFile)
 
 	if configFile != "" {
 		fileConfig, _ := os.ReadFile(configFile)
-		if err := json.Unmarshal(fileConfig, &config); err != nil {
+		if err := yaml.Unmarshal(fileConfig, &config); err != nil {
 			log.Printf("Config file %s is not valid, skipping", configFile)
 			config = &Config{}
 		} else {
@@ -151,10 +152,12 @@ func getConfig() (config *Config, err error) {
 	// if there are no providers, assign the defaults
 	if config.Providers == nil {
 		config.Providers = make(map[string]ProviderConfig)
-		for provider, defaultProviderConfig := range defaultConfig.Providers {
-			if _, exists := config.Providers[provider]; !exists {
-				config.Providers[provider] = defaultProviderConfig
-			}
+	}
+
+	// Ensure default providers exist if not configured
+	for provider, defaultProviderConfig := range defaultConfig.Providers {
+		if _, exists := config.Providers[provider]; !exists {
+			config.Providers[provider] = defaultProviderConfig
 		}
 	}
 
@@ -174,67 +177,45 @@ func getConfig() (config *Config, err error) {
 }
 
 func findConfigFile(cliConfigFile string) string {
-	// if configfile provided via CLI argument, use it
+	// CLI argument
 	if cliConfigFile != "" {
 		return cliConfigFile
 	}
 
-	// check env variable
-	configFile := os.Getenv("LLMSEE_CONFIGFILE")
-	if configFile != "" {
+	// Environment variable
+	if configFile := os.Getenv("LLMSEE_CONFIGFILE"); configFile != "" {
 		return configFile
 	}
 
-	// check default OS paths
-	switch runtime.GOOS {
-	case "darwin":
-		// macOS uses ~/Library/Application Support for application data
-		userLibrary := os.Getenv("HOME") + "/Library/Application Support"
-		configFile := filepath.Join(userLibrary, defaultConfigFile)
-		if fileExists(configFile) {
-			return configFile
-		}
+	// Standard locations
+	homeDir, _ := os.UserHomeDir()
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	appData := os.Getenv("APPDATA")
 
-		// Check HOME/.config (fallback for Linux/macOS)
-		if home := os.Getenv("HOME"); home != "" {
-			configFile := filepath.Join(home, ".config", defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
+	pathsToCheck := []string{
+		"llmsee.yml", // Current directory
+	}
+	if homeDir != "" {
+		pathsToCheck = append(pathsToCheck,
+			filepath.Join(homeDir, "llmsee.yml"),
+			filepath.Join(homeDir, ".config", "llmsee", "llmsee.yml"),
+			filepath.Join(homeDir, "Library", "Application Support", "llmsee", "llmsee.yml"),
+		)
+	}
+	if xdgConfigHome != "" {
+		pathsToCheck = append(pathsToCheck,
+			filepath.Join(xdgConfigHome, "llmsee", "llmsee.yml"),
+		)
+	}
+	if appData != "" {
+		pathsToCheck = append(pathsToCheck,
+			filepath.Join(appData, "llmsee", "llmsee.yml"),
+		)
+	}
 
-	case "linux":
-		// Check XDG_CONFIG_HOME for Linux
-		if xdgConfigHome := os.Getenv("XDG_CONFIG_HOME"); xdgConfigHome != "" {
-			configFile := filepath.Join(xdgConfigHome, defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
-
-		// Check HOME/.config (fallback for Linux/macOS)
-		if home := os.Getenv("HOME"); home != "" {
-			configFile := filepath.Join(home, ".config", defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
-
-	case "windows":
-		// Check APPDATA for Windows
-		if appData := os.Getenv("APPDATA"); appData != "" {
-			configFile := filepath.Join(appData, defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
-
-		// Check HOME (Fallback for Windows)
-		if home := os.Getenv("USERPROFILE"); home != "" {
-			configFile := filepath.Join(home, defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
+	for _, path := range pathsToCheck {
+		if fileExists(path) {
+			return path
 		}
 	}
 
