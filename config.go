@@ -95,26 +95,26 @@ type CLIArgs struct {
 // parseCLIArgs parses command line arguments
 func parseCLIArgs() CLIArgs {
 	var cliArgs CLIArgs
-	
+
 	// Use a separate flag set to avoid conflicts with test flags
 	fs := flag.NewFlagSet("llmsee", flag.ContinueOnError)
 	fs.StringVar(&cliArgs.ConfigFile, "c", "", "Path to JSON configuration file")
 	fs.IntVar(&cliArgs.Port, "p", 0, "Port number to override config file setting")
-	
+
 	// Parse using os.Args[1:] to skip the program name
 	if len(os.Args) > 1 {
 		fs.Parse(os.Args[1:])
 	}
-	
+
 	return cliArgs
 }
 
 func getConfig() (config *Config, err error) {
 	config = &Config{}
-	
+
 	// Parse CLI arguments first
 	cliArgs := parseCLIArgs()
-	
+
 	// Find and load config file
 	configFile := findConfigFile(cliArgs.ConfigFile)
 
@@ -174,67 +174,45 @@ func getConfig() (config *Config, err error) {
 }
 
 func findConfigFile(cliConfigFile string) string {
-	// if configfile provided via CLI argument, use it
+	// CLI argument
 	if cliConfigFile != "" {
 		return cliConfigFile
 	}
 
-	// check env variable
-	configFile := os.Getenv("LLMSEE_CONFIGFILE")
-	if configFile != "" {
+	// Environment variable
+	if configFile := os.Getenv("LLMSEE_CONFIGFILE"); configFile != "" {
 		return configFile
 	}
 
-	// check default OS paths
-	switch runtime.GOOS {
-	case "darwin":
-		// macOS uses ~/Library/Application Support for application data
-		userLibrary := os.Getenv("HOME") + "/Library/Application Support"
-		configFile := filepath.Join(userLibrary, defaultConfigFile)
-		if fileExists(configFile) {
-			return configFile
-		}
+	// Standard locations
+	homeDir, _ := os.UserHomeDir()
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	appData := os.Getenv("APPDATA")
 
-		// Check HOME/.config (fallback for Linux/macOS)
-		if home := os.Getenv("HOME"); home != "" {
-			configFile := filepath.Join(home, ".config", defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
+	pathsToCheck := []string{
+		"llmsee.json", // Current directory
+	}
+	if homeDir != "" {
+		pathsToCheck = append(pathsToCheck,
+			filepath.Join(homeDir, "llmsee.json"),
+			filepath.Join(homeDir, ".config", "llmsee", "llmsee.json"),
+			filepath.Join(homeDir, "Library", "Application Support", "llmsee", "llmsee.json"),
+		)
+	}
+	if xdgConfigHome != "" {
+		pathsToCheck = append(pathsToCheck,
+			filepath.Join(xdgConfigHome, "llmsee", "llmsee.json"),
+		)
+	}
+	if appData != "" {
+		pathsToCheck = append(pathsToCheck,
+			filepath.Join(appData, "llmsee", "llmsee.json"),
+		)
+	}
 
-	case "linux":
-		// Check XDG_CONFIG_HOME for Linux
-		if xdgConfigHome := os.Getenv("XDG_CONFIG_HOME"); xdgConfigHome != "" {
-			configFile := filepath.Join(xdgConfigHome, defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
-
-		// Check HOME/.config (fallback for Linux/macOS)
-		if home := os.Getenv("HOME"); home != "" {
-			configFile := filepath.Join(home, ".config", defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
-
-	case "windows":
-		// Check APPDATA for Windows
-		if appData := os.Getenv("APPDATA"); appData != "" {
-			configFile := filepath.Join(appData, defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
-		}
-
-		// Check HOME (Fallback for Windows)
-		if home := os.Getenv("USERPROFILE"); home != "" {
-			configFile := filepath.Join(home, defaultConfigFile)
-			if fileExists(configFile) {
-				return configFile
-			}
+	for _, path := range pathsToCheck {
+		if fileExists(path) {
+			return path
 		}
 	}
 
