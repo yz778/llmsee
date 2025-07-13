@@ -17,7 +17,8 @@ type SSEClient struct {
 
 type ServerUpdate struct {
 	EventType string   `json:"eventType"`
-	Entry     LogEntry `json:"entry"`
+	Entry     LogEntry `json:"entry,omitempty"`
+	Message   string   `json:"message,omitempty"`
 }
 
 func generateClientID() string {

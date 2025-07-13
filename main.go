@@ -95,6 +95,13 @@ func main() {
 		}
 	}()
 
+	// Create a context that can be cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start the config file watcher
+	go server.watchConfig(ctx)
+
 	// Wait before proceeding to check if coroutine fails
 	time.Sleep(100 * time.Millisecond)
 
