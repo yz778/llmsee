@@ -70,7 +70,7 @@ func (s *ProxyServer) handleSse(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		s.mu.Lock()
 		if client, ok := s.clientChannels[client.id]; ok {
-			close(client.done)   // Signal all goroutines to stop
+			close(client.done) // Signal all goroutines to stop
 			// Do NOT close client.events here. It might be read by other goroutines if not handled carefully.
 			// The event loop in handleSse will stop when context is done or client.done is closed.
 			delete(s.clientChannels, client.id)
@@ -122,7 +122,7 @@ func (s *ProxyServer) gracefulShutdownSSE() {
 
 	for id, client := range s.clientChannels {
 		log.Printf("Closing SSE channel for client %s", id)
-		close(client.done)   // Signal client to stop receiving
+		close(client.done) // Signal client to stop receiving
 		// Do NOT close client.events here. The individual handleSse goroutine is responsible for closing it.
 		delete(s.clientChannels, id) // Remove client from map
 	}

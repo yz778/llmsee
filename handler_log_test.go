@@ -46,7 +46,7 @@ func TestHandleLogList(t *testing.T) {
 			_, err = db.Exec(`
 				INSERT INTO logs (timestamp, provider, method, model, target_url, request_headers, response_headers, duration_ms)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			`, 
+			`,
 				"2023-01-01T12:00:00Z",
 				"test-provider",
 				"POST",
@@ -273,10 +273,10 @@ func TestHandleLogDetail(t *testing.T) {
 			request_headers, request_body, response_headers, response_body,
 			useragent, response_status, request_body_size, response_body_size, duration_ms
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, 
+	`,
 		"2023-01-01T12:00:00Z",
 		"test-provider",
-		"POST", 
+		"POST",
 		"test-model",
 		"http://test.com/api",
 		`{"Content-Type":"application/json", "Authorization":"Bearer token"}`,
