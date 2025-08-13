@@ -23,7 +23,7 @@ func (s *ProxyServer) handleLogList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalPages := int(math.Ceil(float64(totalLogs) / float64(perPage)))
-	
+
 	// Adjust page if out of bounds
 	if page < 1 || (totalPages > 0 && page > totalPages) {
 		page = max(1, totalPages)
