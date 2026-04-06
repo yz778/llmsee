@@ -3,7 +3,7 @@ module llmsee
 go 1.24.6
 
 require (
-	github.com/andybalholm/brotli v1.2.0
+	github.com/andybalholm/brotli v1.2.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
